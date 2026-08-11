@@ -1,0 +1,136 @@
+name: Deploy Audora
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'styles.css'
+      - 'app.js'
+      - 'i18n.js'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        env:
+          HOST: ${{ secrets.HOST }}
+          PASS: ${{ secrets.PASS }}
+        run: |
+          test -n "$HOST" || (echo 'HOST secret is missing' && exit 1)
+          test -n "$PASS" || (echo 'PASS secret is missing' && exit 1)
+
+      - name: Install SSH client helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+
+      - name: Prepare server and Nginx
+        env:
+          HOST: ${{ secrets.HOST }}
+          PASS: ${{ secrets.PASS }}
+        run: |
+          export SSHPASS="$PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 root@"$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          DOMAIN="audora.smarbiz.sbs"
+          WEBROOT="/var/www/audora"
+
+          if ! command -v nginx >/dev/null 2>&1; then
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
+          fi
+
+          mkdir -p "$WEBROOT"
+
+          cat > /etc/nginx/sites-available/audora.smarbiz.sbs <<'NGINX'
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name audora.smarbiz.sbs;
+
+              root /var/www/audora;
+              index index.html;
+
+              location / {
+                  try_files $uri $uri/ /index.html;
+              }
+
+              location ~* \.(?:css|js|jpg|jpeg|gif|png|svg|webp|ico|woff2?)$ {
+                  expires 7d;
+                  add_header Cache-Control "public, max-age=604800, immutable";
+                  try_files $uri =404;
+              }
+          }
+          NGINX
+
+          ln -sfn /etc/nginx/sites-available/audora.smarbiz.sbs /etc/nginx/sites-enabled/audora.smarbiz.sbs
+          nginx -t
+          systemctl enable nginx >/dev/null 2>&1 || true
+          systemctl reload nginx || systemctl restart nginx
+          REMOTE
+
+      - name: Upload prototype
+        env:
+          HOST: ${{ secrets.HOST }}
+          PASS: ${{ secrets.PASS }}
+        run: |
+          export SSHPASS="$PASS"
+          tar -czf /tmp/audora-site.tgz index.html styles.css app.js i18n.js
+          sshpass -e scp -o StrictHostKeyChecking=no /tmp/audora-site.tgz root@"$HOST":/tmp/audora-site.tgz
+          sshpass -e ssh -o StrictHostKeyChecking=no root@"$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          rm -rf /var/www/audora/*
+          tar -xzf /tmp/audora-site.tgz -C /var/www/audora
+          rm -f /tmp/audora-site.tgz
+          chown -R www-data:www-data /var/www/audora
+          find /var/www/audora -type d -exec chmod 755 {} \;
+          find /var/www/audora -type f -exec chmod 644 {} \;
+          nginx -t
+          systemctl reload nginx
+          curl -fsS -H 'Host: audora.smarbiz.sbs' http://127.0.0.1/ >/dev/null
+          REMOTE
+
+      - name: Enable HTTPS
+        env:
+          HOST: ${{ secrets.HOST }}
+          PASS: ${{ secrets.PASS }}
+        run: |
+          export SSHPASS="$PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no root@"$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          DOMAIN="audora.smarbiz.sbs"
+
+          if ! command -v certbot >/dev/null 2>&1; then
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
+          fi
+
+          if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+            certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
+          else
+            certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+          fi
+
+          nginx -t
+          systemctl reload nginx
+          REMOTE
+
+      - name: Verify live site
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsSL --max-time 15 https://audora.smarbiz.sbs/ | grep -qi 'Audora'; then
+              echo 'Audora is live over HTTPS.'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Live verification failed.'
+          exit 1
