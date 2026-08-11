@@ -1,0 +1,115 @@
+name: Deploy Audora via domain
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-domain.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      PASS: ${{ secrets.PASS }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      TARGET_HOST: audora.smarbiz.sbs
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+
+      - name: Resolve user on domain target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PASS" || { echo '::error::PASS secret is missing'; exit 1; }
+          export SSHPASS="$PASS"
+          USERS=()
+          [[ -n "${SSH_USER:-}" ]] && USERS+=("$SSH_USER")
+          USERS+=(root ubuntu debian admin deploy)
+          for u in "${USERS[@]}"; do
+            if sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o PreferredAuthentications=keyboard-interactive,password -o PubkeyAuthentication=no "$u@$TARGET_HOST" 'printf ok' >/dev/null 2>&1; then
+              echo "SSH_USER_RESOLVED=$u" >> "$GITHUB_ENV"
+              echo "::notice::Authenticated to audora.smarbiz.sbs as '$u'."
+              exit 0
+            fi
+          done
+          echo '::error::The PASS secret does not authenticate to the server currently behind audora.smarbiz.sbs.'
+          exit 1
+
+      - name: Configure Nginx and upload site
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$PASS"
+          tar -czf /tmp/audora-site.tgz index.html styles.css app.js i18n.js
+          sshpass -e scp -o StrictHostKeyChecking=no /tmp/audora-site.tgz "$SSH_USER_RESOLVED@$TARGET_HOST:/tmp/audora-site.tgz"
+
+          REMOTE_SHELL='bash -s'
+          if [[ "$SSH_USER_RESOLVED" != root ]]; then REMOTE_SHELL='sudo -n bash -s'; fi
+
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SSH_USER_RESOLVED@$TARGET_HOST" "$REMOTE_SHELL" <<'REMOTE'
+          set -euo pipefail
+          DOMAIN='audora.smarbiz.sbs'
+          WEBROOT='/var/www/audora'
+
+          if ! command -v nginx >/dev/null 2>&1; then
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
+          fi
+
+          mkdir -p "$WEBROOT"
+          rm -rf "$WEBROOT"/*
+          tar -xzf /tmp/audora-site.tgz -C "$WEBROOT"
+          rm -f /tmp/audora-site.tgz
+          chown -R www-data:www-data "$WEBROOT"
+
+          cat > /etc/nginx/sites-available/audora.smarbiz.sbs <<'NGINX'
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name audora.smarbiz.sbs;
+              root /var/www/audora;
+              index index.html;
+
+              location / {
+                  try_files $uri $uri/ /index.html;
+              }
+
+              location ~* \.(?:css|js|jpg|jpeg|gif|png|svg|webp|ico|woff2?)$ {
+                  expires 7d;
+                  add_header Cache-Control "public, max-age=604800, immutable";
+                  try_files $uri =404;
+              }
+          }
+          NGINX
+
+          ln -sfn /etc/nginx/sites-available/audora.smarbiz.sbs /etc/nginx/sites-enabled/audora.smarbiz.sbs
+          nginx -t
+          systemctl reload nginx || systemctl restart nginx
+          curl -fsS -H 'Host: audora.smarbiz.sbs' http://127.0.0.1/ | grep -qi Audora
+
+          if ! command -v certbot >/dev/null 2>&1; then
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
+          fi
+          certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
+          nginx -t
+          systemctl reload nginx
+          REMOTE
+
+      - name: Verify public site
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsSL --max-time 15 https://audora.smarbiz.sbs/ | grep -qi Audora; then
+              echo '::notice::audora.smarbiz.sbs is live over HTTPS.'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo '::error::Deployment completed but public HTTPS verification failed.'
+          exit 1
