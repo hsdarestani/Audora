@@ -2,340 +2,173 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#09090b" />
-  <meta name="description" content="Audora — find and book studios, producers, engineers and songwriters in one place." />
-  <title>Audora — Build your perfect session</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0a10" />
+  <meta name="description" content="Audora — app prototype for discovering and booking music studios and creative professionals." />
+  <title>Audora</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=3" />
 </head>
 <body>
-  <div class="noise" aria-hidden="true"></div>
-  <div class="aurora aurora-a" aria-hidden="true"></div>
-  <div class="aurora aurora-b" aria-hidden="true"></div>
+  <div class="ambient ambient-a" aria-hidden="true"></div>
+  <div class="ambient ambient-b" aria-hidden="true"></div>
 
-  <header class="site-header" id="top">
-    <a class="brand" href="#top" aria-label="Audora Home">
-      <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 44 44" role="img"><path d="M8 25.5c4.2 0 4.2-7 8.4-7s4.2 12 8.4 12 4.2-17 8.4-17S37.4 22 41 22"/><circle cx="6" cy="25.5" r="2.5"/><circle cx="38" cy="22" r="2.5"/></svg>
-      </span>
-      <span class="brand-name" data-brand>Audora</span>
-    </a>
-
-    <nav class="desktop-nav" aria-label="Primary">
-      <a href="#discover" data-i18n="nav.discover">Entdecken</a>
-      <a href="#match" data-i18n="nav.match">Smart Match</a>
-      <a href="#how" data-i18n="nav.how">So funktioniert's</a>
-      <a href="#creators" data-i18n="nav.creators">Für Anbieter</a>
-    </nav>
-
-    <div class="header-actions">
-      <button class="icon-button favorite-header" id="favoriteHeader" aria-label="Favorites">
-        <svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/></svg>
-        <span class="badge" id="favoriteCount">0</span>
+  <div class="app-shell" id="appShell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <button class="brand brand-button" data-route="home" aria-label="Audora Home">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 44 44"><path d="M8 25.5c4.2 0 4.2-7 8.4-7s4.2 12 8.4 12 4.2-17 8.4-17S37.4 22 41 22"/><circle cx="6" cy="25.5" r="2.5"/><circle cx="38" cy="22" r="2.5"/></svg></span>
+        <span class="brand-name" data-brand>Audora</span>
       </button>
-      <div class="language-switcher">
-        <button class="language-button" id="languageButton" aria-expanded="false">
-          <span id="currentLanguage">DE</span>
-          <svg viewBox="0 0 20 20"><path d="m5 7 5 5 5-5"/></svg>
+
+      <nav class="side-nav">
+        <button class="side-link active" data-route="home"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="m4 10 8-7 8 7v10h-6v-6h-4v6H4Z"/></svg></span><span data-i18n="nav.home">Start</span></button>
+        <button class="side-link" data-route="discover"><span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span><span data-i18n="nav.discover">Entdecken</span></button>
+        <button class="side-link" data-route="build"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/></svg></span><span data-i18n="nav.build">Session bauen</span></button>
+        <button class="side-link" data-route="sessions"><span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg></span><span data-i18n="nav.sessions">Sessions</span><span class="nav-count">2</span></button>
+        <button class="side-link" data-route="saved"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/></svg></span><span data-i18n="nav.saved">Gespeichert</span><span class="nav-count" id="sideSavedCount">0</span></button>
+        <button class="side-link" data-route="inbox"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v12H8l-4 4Z"/></svg></span><span data-i18n="nav.inbox">Nachrichten</span><span class="unread-dot"></span></button>
+      </nav>
+
+      <div class="side-bottom">
+        <button class="provider-switch" id="providerSwitch">
+          <span class="provider-icon"><svg viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M8 20v-7h8v7"/></svg></span>
+          <span><small data-i18n="provider.label">ANBIETER-MODUS</small><strong data-i18n="provider.switch">Zum Creator-Dashboard</strong></span>
+          <span class="switch-dot"></span>
         </button>
-        <div class="language-menu" id="languageMenu">
-          <button data-lang="de"><span>🇩🇪</span> Deutsch <span class="lang-check">✓</span></button>
-          <button data-lang="en"><span>🇬🇧</span> English <span class="lang-check">✓</span></button>
-          <div class="language-more">
-            <span data-i18n="language.more">Weitere Sprachen vorbereitet</span>
-            <small>ES · FR · TR · FA · AR · +</small>
-          </div>
-        </div>
+        <button class="profile-mini" data-route="profile"><img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=120&q=80" alt="Profile"><span><strong>Alex M.</strong><small data-i18n="profile.artist">Artist</small></span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
       </div>
-      <button class="button button-ghost header-login" data-i18n="nav.login">Anmelden</button>
-      <button class="button button-primary header-cta" data-open-builder data-i18n="nav.start">Session planen</button>
+    </aside>
+
+    <div class="app-area">
+      <header class="app-topbar">
+        <button class="mobile-brand brand-button" data-route="home"><span class="brand-mark"><svg viewBox="0 0 44 44"><path d="M8 25.5c4.2 0 4.2-7 8.4-7s4.2 12 8.4 12 4.2-17 8.4-17S37.4 22 41 22"/><circle cx="6" cy="25.5" r="2.5"/><circle cx="38" cy="22" r="2.5"/></svg></span><span data-brand>Audora</span></button>
+        <div class="desktop-page-title"><span id="pageEyebrow" data-i18n="home.eyebrow">DEIN WORKSPACE</span><strong id="pageTitle" data-i18n="home.title">Guten Abend, Alex.</strong></div>
+        <div class="top-actions">
+          <button class="top-icon" id="notificationButton" aria-label="Notifications"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span class="notification-badge">3</span></button>
+          <div class="language-switcher">
+            <button class="language-button" id="languageButton"><span id="currentLanguage">DE</span><svg viewBox="0 0 20 20"><path d="m5 7 5 5 5-5"/></svg></button>
+            <div class="language-menu" id="languageMenu">
+              <button data-lang="de"><span>🇩🇪</span><span>Deutsch</span><b>✓</b></button>
+              <button data-lang="en"><span>🇬🇧</span><span>English</span><b>✓</b></button>
+              <div class="language-more"><small data-i18n="language.more">Weitere Sprachen vorbereitet</small><strong>ES · FR · TR · FA · AR · +</strong></div>
+            </div>
+          </div>
+          <button class="avatar-button" data-route="profile"><img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=90&q=80" alt="Alex"></button>
+        </div>
+      </header>
+
+      <main class="app-content" id="appContent">
+        <section class="app-view active" data-view="home">
+          <div class="mobile-page-heading"><small data-i18n="home.eyebrow">DEIN WORKSPACE</small><h1 data-i18n="home.title">Guten Abend, Alex.</h1></div>
+
+          <div class="home-grid">
+            <article class="spotlight-card">
+              <div class="spotlight-copy">
+                <span class="live-pill"><i></i><span data-i18n="home.nextLabel">NÄCHSTE SESSION</span></span>
+                <h2 data-i18n-html="home.nextTitle">Midnight EP<br><span>Freitag · 20:00</span></h2>
+                <p data-i18n="home.nextText">Studio, Producer und Engineer sind bestätigt. Alles für deine Session liegt im gemeinsamen Session Room.</p>
+                <div class="spotlight-team"><span><img src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?auto=format&fit=crop&w=90&q=80" alt=""><b>S</b></span><span><img src="https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=90&q=80" alt=""></span><span><img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=90&q=80" alt=""></span><small>Neon Room + 2</small></div>
+                <div class="spotlight-actions"><button class="primary-btn" data-open-session="midnight"><span data-i18n="home.openRoom">Session Room öffnen</span><svg viewBox="0 0 20 20"><path d="M4 10h12M11 5l5 5-5 5"/></svg></button><button class="ghost-btn" data-route="sessions" data-i18n="home.details">Details</button></div>
+              </div>
+              <div class="spotlight-art"><img src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?auto=format&fit=crop&w=1000&q=88" alt="Recording studio"><div class="spotlight-date"><small>FR</small><strong>14</strong><span>20:00</span></div><div class="wave-line"></div></div>
+            </article>
+
+            <aside class="quick-panel">
+              <div class="panel-head"><div><small data-i18n="home.quickLabel">SCHNELLSTART</small><h3 data-i18n="home.quickTitle">Was möchtest du machen?</h3></div></div>
+              <div class="quick-grid">
+                <button class="quick-action" data-build-goal="record"><span>🎙️</span><strong data-i18n="goals.record">Song aufnehmen</strong><small data-i18n="goals.recordSub">Studio + Team</small></button>
+                <button class="quick-action" data-build-goal="produce"><span>🎛️</span><strong data-i18n="goals.produce">Track produzieren</strong><small data-i18n="goals.produceSub">Producer finden</small></button>
+                <button class="quick-action" data-route="discover" data-category-jump="studio"><span>🏠</span><strong data-i18n="goals.studio">Studio finden</strong><small data-i18n="goals.studioSub">Heute verfügbar</small></button>
+                <button class="quick-action ai-quick" id="quickAi"><span>✦</span><strong data-i18n="goals.ai">Smart Match</strong><small data-i18n="goals.aiSub">KI stellt alles zusammen</small></button>
+              </div>
+            </aside>
+          </div>
+
+          <section class="content-section">
+            <div class="section-title"><div><small data-i18n="home.forYouLabel">FÜR DICH</small><h2 data-i18n="home.forYouTitle">Passt zu deinem Sound</h2></div><button class="text-btn" data-route="discover"><span data-i18n="common.showAll">Alle ansehen</span><svg viewBox="0 0 20 20"><path d="M4 10h12M11 5l5 5-5 5"/></svg></button></div>
+            <div class="horizontal-cards" id="homeRecommendations"></div>
+          </section>
+
+          <section class="content-section home-lower-grid">
+            <article class="insight-card"><div class="section-title compact"><div><small data-i18n="home.projectLabel">DEIN PROJEKT</small><h3>Midnight EP</h3></div><span class="progress-value">72%</span></div><div class="project-progress"><i></i></div><div class="project-stages"><span class="done">✓ <b data-i18n="project.recording">Recording</b></span><span class="done">✓ <b data-i18n="project.editing">Editing</b></span><span class="active">03 <b data-i18n="project.mix">Mix</b></span><span>04 <b data-i18n="project.master">Master</b></span></div><button class="ghost-btn full" data-open-session="midnight" data-i18n="project.open">Projekt öffnen</button></article>
+            <article class="insight-card"><div class="section-title compact"><div><small data-i18n="home.activityLabel">AKTIVITÄT</small><h3 data-i18n="home.activityTitle">Heute passiert</h3></div><button class="round-more">•••</button></div><div class="activity-list"><div><span class="activity-icon mint">✓</span><p><strong data-i18n="activity.confirmed">Mia hat die Session bestätigt</strong><small data-i18n="activity.time1">vor 24 Min.</small></p></div><div><span class="activity-icon purple">↗</span><p><strong data-i18n="activity.file">mix_reference.wav wurde geteilt</strong><small data-i18n="activity.time2">vor 1 Std.</small></p></div><div><span class="activity-icon amber">★</span><p><strong data-i18n="activity.saved">Neues Studio für dich gespeichert</strong><small data-i18n="activity.time3">vor 3 Std.</small></p></div></div></article>
+          </section>
+        </section>
+
+        <section class="app-view" data-view="discover">
+          <div class="view-heading"><div><small data-i18n="discover.eyebrow">MARKETPLACE</small><h1 data-i18n="discover.title">Entdecke deinen nächsten Sound.</h1><p data-i18n="discover.lead">Studios und Musikprofis mit Verfügbarkeit, Stil, Credits und Preisen vergleichen.</p></div><button class="secondary-btn map-button" id="mapToggle"><svg viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3Z"/><path d="M9 3v15M15 6v15"/></svg><span data-i18n="discover.map">Karte</span></button></div>
+          <div class="search-bar"><span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span><input id="discoverSearch" type="search" data-i18n-placeholder="discover.placeholder" placeholder="Studio, Producer oder Genre suchen"><button id="filterButton"><svg viewBox="0 0 24 24"><path d="M4 7h16M7 12h10M10 17h4"/></svg><span data-i18n="discover.filter">Filter</span></button></div>
+          <div class="category-tabs" id="categoryTabs"><button class="active" data-category="all" data-i18n="categories.all">Alles</button><button data-category="studio" data-i18n="categories.studios">Studios</button><button data-category="producer" data-i18n="categories.producers">Producer</button><button data-category="engineer" data-i18n="categories.engineers">Toningenieure</button><button data-category="songwriter" data-i18n="categories.songwriters">Songwriter</button></div>
+          <div class="filter-row" id="filterRow"><button class="active" data-filter="recommended" data-i18n="filters.recommended">Empfohlen</button><button data-filter="instant"><i></i><span data-i18n="filters.instant">Heute frei</span></button><button data-filter="top">★ <span data-i18n="filters.top">Top bewertet</span></button><button data-filter="budget">€ <span data-i18n="filters.budget">Unter 100 €/Std.</span></button></div>
+          <div class="discover-layout" id="discoverLayout"><div class="listing-grid" id="discoverGrid"></div><aside class="map-panel" id="mapPanel"><div class="fake-map"><div class="map-lines"></div><div class="road r1"></div><div class="road r2"></div><button class="map-pin p1">€89</button><button class="map-pin p2">€65</button><button class="map-pin p3">€110</button><button class="map-pin p4">€95</button><span class="user-pin"><i></i></span></div></aside></div>
+        </section>
+
+        <section class="app-view" data-view="build">
+          <div class="view-heading build-heading"><div><small data-i18n="build.eyebrow">SESSION BUILDER</small><h1 data-i18n="build.title">Baue deine perfekte Session.</h1><p data-i18n="build.lead">Du gibst Ziel, Sound, Ort und Budget vor. Audora kombiniert den passenden Raum und die richtigen Menschen.</p></div><span class="ai-badge">✦ <span data-i18n="build.ai">Smart Match aktiv</span></span></div>
+          <div class="builder-layout">
+            <div class="builder-main">
+              <div class="builder-stepper"><button class="active" data-builder-step="1"><span>1</span><b data-i18n="build.stepGoal">Ziel</b></button><i></i><button data-builder-step="2"><span>2</span><b data-i18n="build.stepVibe">Sound & Ort</b></button><i></i><button data-builder-step="3"><span>3</span><b data-i18n="build.stepMatch">Match</b></button></div>
+              <div class="builder-pages">
+                <div class="builder-page active" data-builder-page="1"><span class="step-kicker">01</span><h2 data-i18n="build.goalTitle">Was möchtest du heute schaffen?</h2><p data-i18n="build.goalLead">Wähle den Startpunkt. Du kannst später alles anpassen.</p><div class="goal-cards" id="goalCards"><button data-goal="record"><span>🎙️</span><strong data-i18n="goals.record">Song aufnehmen</strong><small data-i18n="goals.recordFull">Studio, Aufnahme und optionales Team</small></button><button data-goal="produce"><span>🎛️</span><strong data-i18n="goals.produce">Track produzieren</strong><small data-i18n="goals.produceFull">Producer, Studio und Arrangement</small></button><button data-goal="mix"><span>🎚️</span><strong data-i18n="goals.mix">Mix & Master</strong><small data-i18n="goals.mixFull">Remote oder vor Ort mit Engineer</small></button><button data-goal="write"><span>✍️</span><strong data-i18n="goals.write">Songwriting</strong><small data-i18n="goals.writeFull">Co-Writing, Topline und Creative Session</small></button></div></div>
+                <div class="builder-page" data-builder-page="2"><span class="step-kicker">02</span><h2 data-i18n="build.vibeTitle">Wie soll es klingen?</h2><p data-i18n="build.vibeLead">Mehrere Vibes sind möglich. Danach gleichen wir Verfügbarkeit und Budget ab.</p><div class="choice-block"><small data-i18n="build.genres">GENRES</small><div class="chips" id="genreChips"><button>Hip-Hop</button><button>R&B</button><button>Pop</button><button>Electronic</button><button>Afrobeats</button><button>Indie</button><button>Rock</button></div></div><div class="builder-fields"><label><small data-i18n="build.city">STADT</small><select id="buildCity"><option>Berlin</option><option>Frankfurt</option><option>Hamburg</option><option>Köln</option><option>München</option></select></label><label><small data-i18n="build.date">DATUM</small><input id="buildDate" type="date"></label><label><small data-i18n="build.budget">BUDGET</small><div class="range-row"><input id="budgetRange" type="range" min="250" max="1600" step="50" value="650"><strong id="budgetValue">€650</strong></div></label></div></div>
+                <div class="builder-page" data-builder-page="3"><span class="step-kicker">03</span><h2 data-i18n="build.matchTitle">Dein bestes Setup ist bereit.</h2><p data-i18n="build.matchLead">Aus Stil, Bewertung, Verfügbarkeit und Budget berechnet.</p><div class="match-score-card"><div class="score-ring"><span>97</span><small>%</small></div><div><small data-i18n="build.fit">CREATIVE FIT</small><strong id="matchHeadline">Hip-Hop Session · Berlin</strong><p data-i18n="build.fitText">Starker Genre-Fit · alle gleichzeitig verfügbar · innerhalb deines Budgets</p></div></div><div class="match-team" id="matchTeam"></div></div>
+              </div>
+              <div class="builder-footer"><button class="ghost-btn" id="builderBack" data-i18n="common.back">Zurück</button><button class="primary-btn" id="builderNext"><span data-i18n="common.next">Weiter</span><svg viewBox="0 0 20 20"><path d="M4 10h12M11 5l5 5-5 5"/></svg></button></div>
+            </div>
+            <aside class="builder-summary"><small data-i18n="build.summaryLabel">LIVE-ZUSAMMENFASSUNG</small><h3 data-i18n="build.summaryTitle">Deine Session</h3><div class="summary-visual"><img src="https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=700&q=85" alt="Studio session"><span>97% Match</span></div><div class="summary-lines"><div><span data-i18n="build.summaryGoal">Ziel</span><strong id="summaryGoal">—</strong></div><div><span data-i18n="build.summarySound">Sound</span><strong id="summarySound">—</strong></div><div><span data-i18n="build.summaryPlace">Ort</span><strong id="summaryPlace">Berlin</strong></div></div><div class="summary-total"><span><small data-i18n="build.estimated">Geschätzt</small><strong id="summaryTotal">€567</strong></span><span class="protected"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6Z"/><path d="m9 12 2 2 4-5"/></svg><small data-i18n="build.protected">geschützt</small></span></div></aside>
+          </div>
+        </section>
+
+        <section class="app-view" data-view="sessions">
+          <div class="view-heading"><div><small data-i18n="sessions.eyebrow">DEINE PROJEKTE</small><h1 data-i18n="sessions.title">Sessions & Buchungen</h1><p data-i18n="sessions.lead">Alle Termine, Teams, Dateien und Buchungen an einem Ort.</p></div><button class="primary-btn" data-route="build">＋ <span data-i18n="sessions.new">Neue Session</span></button></div>
+          <div class="segment-tabs" id="sessionTabs"><button class="active" data-session-filter="upcoming" data-i18n="sessions.upcoming">Kommend</button><button data-session-filter="drafts" data-i18n="sessions.drafts">Entwürfe</button><button data-session-filter="past" data-i18n="sessions.past">Vergangen</button></div>
+          <div class="session-list" id="sessionList"></div>
+        </section>
+
+        <section class="app-view" data-view="saved">
+          <div class="view-heading"><div><small data-i18n="saved.eyebrow">DEINE AUSWAHL</small><h1 data-i18n="saved.title">Gespeicherte Favoriten</h1><p data-i18n="saved.lead">Studios und Creators, die du für später markiert hast.</p></div><button class="secondary-btn" data-route="discover"><span data-i18n="saved.discover">Mehr entdecken</span></button></div>
+          <div class="empty-state" id="savedEmpty"><span>♡</span><h2 data-i18n="saved.emptyTitle">Noch nichts gespeichert.</h2><p data-i18n="saved.emptyText">Tippe bei einem Studio oder Creator auf das Herz. Dann erscheint es hier.</p><button class="primary-btn" data-route="discover" data-i18n="saved.emptyCta">Marketplace öffnen</button></div>
+          <div class="listing-grid" id="savedGrid"></div>
+        </section>
+
+        <section class="app-view" data-view="inbox">
+          <div class="view-heading"><div><small data-i18n="inbox.eyebrow">NACHRICHTEN</small><h1 data-i18n="inbox.title">Inbox</h1><p data-i18n="inbox.lead">Direkte Kommunikation mit Studios und deinem Session-Team.</p></div></div>
+          <div class="inbox-layout">
+            <aside class="conversation-list"><div class="conversation-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input data-i18n-placeholder="inbox.search" placeholder="Nachrichten suchen"></div><div id="conversationList"></div></aside>
+            <section class="chat-panel" id="chatPanel"><div class="chat-header" id="chatHeader"></div><div class="messages" id="messages"></div><form class="message-input" id="messageForm"><button type="button" class="attach-btn">＋</button><input id="messageText" data-i18n-placeholder="inbox.message" placeholder="Nachricht schreiben…"><button class="send-btn" type="submit"><svg viewBox="0 0 24 24"><path d="m4 12 16-8-6 16-2-6Z"/></svg></button></form></section>
+          </div>
+        </section>
+
+        <section class="app-view" data-view="profile">
+          <div class="view-heading"><div><small data-i18n="profile.eyebrow">ACCOUNT</small><h1 data-i18n="profile.title">Profil & Einstellungen</h1><p data-i18n="profile.lead">Dein Künstlerprofil, Präferenzen und Anbieter-Modus.</p></div><button class="secondary-btn" id="editProfile"><span data-i18n="profile.edit">Profil bearbeiten</span></button></div>
+          <div class="profile-layout">
+            <article class="profile-card"><div class="profile-cover"></div><div class="profile-person"><img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=260&q=85" alt="Alex"><div><h2>Alex M.</h2><p data-i18n="profile.bio">Independent Artist · Hip-Hop / R&B · Berlin</p><span class="verified">✓ <span data-i18n="profile.verified">Verifiziert</span></span></div></div><div class="profile-stats"><div><strong>8</strong><small data-i18n="profile.sessions">Sessions</small></div><div><strong>14</strong><small data-i18n="profile.saved">Favoriten</small></div><div><strong>4.9</strong><small data-i18n="profile.rating">Bewertung</small></div></div></article>
+            <div class="settings-stack"><button class="settings-row" id="profileProvider"><span class="setting-icon purple"><svg viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M8 20v-7h8v7"/></svg></span><span><strong data-i18n="profile.providerTitle">Anbieter-Modus</strong><small data-i18n="profile.providerText">Studio oder Creative Services anbieten</small></span><span class="toggle-switch"><i></i></span></button><button class="settings-row" data-settings="payments"><span class="setting-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18"/></svg></span><span><strong data-i18n="profile.paymentTitle">Zahlungen & Rechnungen</strong><small data-i18n="profile.paymentText">Zahlungsmethoden und Belege</small></span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button><button class="settings-row" data-settings="notifications"><span class="setting-icon"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/></svg></span><span><strong data-i18n="profile.notifyTitle">Benachrichtigungen</strong><small data-i18n="profile.notifyText">Buchungen, Nachrichten und Empfehlungen</small></span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button><button class="settings-row" data-settings="security"><span class="setting-icon"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6Z"/></svg></span><span><strong data-i18n="profile.securityTitle">Sicherheit & Datenschutz</strong><small data-i18n="profile.securityText">Login, Daten und Privatsphäre</small></span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button></div>
+          </div>
+          <section class="provider-dashboard" id="providerDashboard"><div class="provider-head"><div><small data-i18n="provider.dashboardLabel">CREATOR-DASHBOARD</small><h2 data-i18n="provider.dashboardTitle">Dein Business auf Audora</h2></div><span class="live-status"><i></i><span data-i18n="provider.visible">Profil sichtbar</span></span></div><div class="provider-metrics"><article><small data-i18n="provider.month">DIESER MONAT</small><strong>€4.280</strong><span>↗ 18.4%</span></article><article><small data-i18n="provider.bookings">BUCHUNGEN</small><strong>17</strong><span>+4</span></article><article><small data-i18n="provider.views">PROFILAUFRUFE</small><strong>1.248</strong><span>↗ 26%</span></article><article><small data-i18n="provider.response">ANTWORTZEIT</small><strong>8 Min.</strong><span>Top 5%</span></article></div><div class="provider-actions"><button class="secondary-btn" data-demo-action="calendar" data-i18n="provider.calendar">Verfügbarkeit verwalten</button><button class="primary-btn" data-demo-action="listing" data-i18n="provider.offer">Angebot erstellen</button></div></section>
+        </section>
+      </main>
     </div>
-  </header>
-
-  <main>
-    <section class="hero section-shell">
-      <div class="hero-copy reveal">
-        <div class="eyebrow"><span class="pulse-dot"></span><span data-i18n="hero.eyebrow">Die neue Homebase für Musikschaffende</span></div>
-        <h1 data-i18n-html="hero.title">Deine nächste <span>Session</span> beginnt hier.</h1>
-        <p class="hero-lead" data-i18n="hero.lead">Finde Studio, Producer, Engineer und Songwriter. Vergleiche Verfügbarkeit, Stil und Preis — und stelle dein perfektes Team in Minuten zusammen.</p>
-        <div class="hero-actions">
-          <button class="button button-primary button-large" data-open-builder>
-            <span data-i18n="hero.ctaPrimary">Session zusammenstellen</span>
-            <svg viewBox="0 0 20 20"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
-          </button>
-          <a class="button button-ghost button-large" href="#discover" data-i18n="hero.ctaSecondary">Entdecken</a>
-        </div>
-        <div class="hero-proof">
-          <div class="avatar-stack" aria-hidden="true">
-            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80" alt="" />
-            <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=80&q=80" alt="" />
-            <img src="https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=80&q=80" alt="" />
-            <span>+2k</span>
-          </div>
-          <div>
-            <div class="stars">★★★★★</div>
-            <small data-i18n="hero.proof">Von Artists & Creators geliebt</small>
-          </div>
-        </div>
-      </div>
-
-      <div class="hero-stage reveal delay-1" aria-label="Interactive product preview">
-        <div class="orbit orbit-one"></div>
-        <div class="orbit orbit-two"></div>
-        <div class="floating-tag tag-one"><span class="mini-wave"></span><span data-i18n="hero.tagVerified">Verifizierte Profis</span></div>
-        <div class="floating-tag tag-two"><span class="status-dot"></span><span data-i18n="hero.tagAvailable">Heute verfügbar</span></div>
-
-        <div class="session-card glass-card">
-          <div class="session-card-top">
-            <div>
-              <small data-i18n="builder.previewLabel">DEINE SESSION</small>
-              <h3 data-i18n="builder.previewTitle">Berlin · Freitag · 20:00</h3>
-            </div>
-            <span class="match-score">96% <span data-i18n="builder.match">Match</span></span>
-          </div>
-
-          <div class="session-visual">
-            <img src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?auto=format&fit=crop&w=1100&q=88" alt="Recording studio" />
-            <div class="session-visual-overlay">
-              <span class="pill"><span class="status-dot"></span><span data-i18n="builder.instant">Sofort buchbar</span></span>
-              <button class="round-play" aria-label="Play studio preview"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5Z"/></svg></button>
-            </div>
-          </div>
-
-          <div class="session-stack">
-            <div class="stack-item">
-              <span class="stack-icon">S</span>
-              <div><small data-i18n="types.studio">Studio</small><strong>Neon Room Berlin</strong></div>
-              <b>€89/h</b>
-            </div>
-            <div class="stack-item">
-              <img src="https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=100&q=80" alt="Producer" />
-              <div><small data-i18n="types.producer">Producer</small><strong>Jona K.</strong></div>
-              <b>€180</b>
-            </div>
-            <div class="stack-item">
-              <img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=100&q=80" alt="Audio engineer" />
-              <div><small data-i18n="types.engineer">Engineer</small><strong>Mia L.</strong></div>
-              <b>€120</b>
-            </div>
-          </div>
-
-          <div class="session-total">
-            <div><small data-i18n="builder.total">Gesamt für 3 Stunden</small><strong>€567</strong></div>
-            <button class="button button-primary" data-open-builder data-i18n="builder.book">Session buchen</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="search-composer reveal delay-2">
-        <div class="search-tabs" role="tablist" aria-label="Search type">
-          <button class="active" data-search-type="all" data-i18n="search.all">Alles</button>
-          <button data-search-type="studio" data-i18n="types.studios">Studios</button>
-          <button data-search-type="producer" data-i18n="types.producers">Producer</button>
-          <button data-search-type="engineer" data-i18n="types.engineers">Engineers</button>
-          <button data-search-type="songwriter" data-i18n="types.songwriters">Songwriter</button>
-        </div>
-        <div class="search-fields">
-          <label class="search-field">
-            <span class="field-icon"><svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
-            <span><small data-i18n="search.whereLabel">Wo?</small><input id="heroLocation" type="text" value="Berlin" data-i18n-placeholder="search.wherePlaceholder" /></span>
-          </label>
-          <label class="search-field">
-            <span class="field-icon"><svg viewBox="0 0 24 24"><path d="M6 3v3M18 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z"/></svg></span>
-            <span><small data-i18n="search.whenLabel">Wann?</small><input id="heroDate" type="date" /></span>
-          </label>
-          <label class="search-field">
-            <span class="field-icon"><svg viewBox="0 0 24 24"><path d="M12 3v18M8 7v10M4 10v4M16 6v12M20 9v6"/></svg></span>
-            <span><small data-i18n="search.genreLabel">Genre</small><select id="heroGenre"><option>Hip-Hop</option><option>Pop</option><option>R&B</option><option>Electronic</option><option>Rock</option><option>Podcast</option></select></span>
-          </label>
-          <button class="search-submit" id="heroSearch" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span data-i18n="search.cta">Suchen</span></button>
-        </div>
-      </div>
-    </section>
-
-    <section class="trust-strip section-shell reveal">
-      <div><strong>2.4k+</strong><span data-i18n="stats.creators">verifizierte Creators</span></div>
-      <div><strong>680+</strong><span data-i18n="stats.spaces">Studios & Spaces</span></div>
-      <div><strong>4.9/5</strong><span data-i18n="stats.rating">Ø Bewertung</span></div>
-      <div><strong>24/7</strong><span data-i18n="stats.booking">Buchung & Support</span></div>
-      <div class="trust-badge"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6Z"/><path d="m9 12 2 2 4-5"/></svg><span data-i18n="stats.protected">Geschützte Zahlungen</span></div>
-    </section>
-
-    <section class="section section-shell" id="discover">
-      <div class="section-heading reveal">
-        <div><span class="kicker" data-i18n="discover.kicker">ENTDECKEN</span><h2 data-i18n="discover.title">Alles für deinen Sound. An einem Ort.</h2></div>
-        <p data-i18n="discover.lead">Von der ersten Idee bis zum finalen Master — finde genau die Menschen und Räume, die zu deinem Projekt passen.</p>
-      </div>
-
-      <div class="category-grid reveal" id="categoryGrid">
-        <button class="category-card active" data-category="studio"><span class="category-icon"><svg viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M8 20v-8h8v8M10 8h4"/></svg></span><strong data-i18n="types.studios">Studios</strong><small>680+</small></button>
-        <button class="category-card" data-category="producer"><span class="category-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M3 12h3M18 12h3M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg></span><strong data-i18n="types.producers">Producer</strong><small>1.1k+</small></button>
-        <button class="category-card" data-category="engineer"><span class="category-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16M8 3v4M16 10v4M11 17v4"/></svg></span><strong data-i18n="types.engineers">Engineers</strong><small>840+</small></button>
-        <button class="category-card" data-category="songwriter"><span class="category-icon"><svg viewBox="0 0 24 24"><path d="M14 4 5 13l-1 6 6-1 9-9Z"/><path d="m13 5 6 6"/></svg></span><strong data-i18n="types.songwriters">Songwriter</strong><small>520+</small></button>
-        <button class="category-card" data-category="session"><span class="category-icon"><svg viewBox="0 0 24 24"><path d="M5 20V9M10 20V4M15 20v-7M20 20V7"/></svg></span><strong data-i18n="types.sessionMusicians">Session Musicians</strong><small>390+</small></button>
-      </div>
-
-      <div class="market-toolbar reveal">
-        <div class="filter-pills">
-          <button class="filter-pill active" data-filter="recommended" data-i18n="filters.recommended">Empfohlen</button>
-          <button class="filter-pill" data-filter="instant"><span class="status-dot"></span><span data-i18n="filters.instant">Sofort buchbar</span></button>
-          <button class="filter-pill" data-filter="top"><span>★</span><span data-i18n="filters.top">Top bewertet</span></button>
-          <button class="filter-pill" data-filter="budget"><span>€</span><span data-i18n="filters.budget">Unter €100/h</span></button>
-        </div>
-        <button class="map-toggle" id="mapToggle"><svg viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3Z"/><path d="M9 3v15M15 6v15"/></svg><span data-i18n="filters.map">Karte</span></button>
-      </div>
-
-      <div class="market-layout">
-        <div class="market-grid reveal" id="marketGrid"></div>
-        <aside class="map-panel" id="mapPanel" aria-label="Map preview">
-          <div class="fake-map">
-            <div class="map-grid-lines"></div>
-            <span class="map-road r1"></span><span class="map-road r2"></span><span class="map-road r3"></span>
-            <button class="map-pin p1">€89</button><button class="map-pin p2">€65</button><button class="map-pin p3">€110</button><button class="map-pin p4">€79</button>
-            <div class="map-current"><span></span></div>
-          </div>
-        </aside>
-      </div>
-      <div class="center-action reveal"><button class="button button-ghost button-large" id="showMore"><span data-i18n="discover.showMore">Mehr entdecken</span><svg viewBox="0 0 20 20"><path d="M5 8l5 5 5-5"/></svg></button></div>
-    </section>
-
-    <section class="section section-shell smart-match-section" id="match">
-      <div class="smart-match-card reveal">
-        <div class="match-copy">
-          <span class="ai-pill"><svg viewBox="0 0 24 24"><path d="m12 2 1.7 5.3L19 9l-5.3 1.7L12 16l-1.7-5.3L5 9l5.3-1.7Z"/><path d="m19 15 .9 2.6 2.6.9-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9Z"/></svg><span data-i18n="match.badge">AUDORA SMART MATCH</span></span>
-          <h2 data-i18n-html="match.title">Sag uns, was du vorhast.<br><span>Wir bauen deine Session.</span></h2>
-          <p data-i18n="match.lead">Genre, Budget, Vibe und Termin reichen. Unser Matching kombiniert passende Räume und Creators zu einem buchbaren Paket.</p>
-
-          <div class="match-controls">
-            <label><span data-i18n="match.city">Stadt</span><select id="matchCity"><option>Berlin</option><option>Frankfurt</option><option>Hamburg</option><option>Köln</option><option>München</option></select></label>
-            <label><span data-i18n="match.genre">Sound</span><select id="matchGenre"><option>Hip-Hop</option><option>R&B</option><option>Pop</option><option>Electronic</option><option>Rock</option></select></label>
-            <label class="budget-control"><span><span data-i18n="match.budget">Budget</span><b id="budgetValue">€600</b></span><input id="budgetRange" type="range" min="200" max="1500" step="50" value="600" /></label>
-          </div>
-          <button class="button button-light button-large" id="generateMatch"><svg viewBox="0 0 24 24"><path d="m12 2 1.7 5.3L19 9l-5.3 1.7L12 16l-1.7-5.3L5 9l5.3-1.7Z"/></svg><span data-i18n="match.cta">Perfect Match erstellen</span></button>
-        </div>
-
-        <div class="match-result" id="matchResult">
-          <div class="match-result-head"><div><small data-i18n="match.resultLabel">DEIN PERFECT MATCH</small><strong id="matchResultTitle">Hip-Hop Session · Berlin</strong></div><span class="score-ring"><b>96</b><small>%</small></span></div>
-          <div class="match-result-image"><img src="https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=900&q=85" alt="Music session" /><span class="match-reason" data-i18n="match.reason">Passt zu deinem Sound</span></div>
-          <div class="bundle-list">
-            <div><span class="bundle-type">01</span><p><small data-i18n="types.studio">Studio</small><strong>Neon Room</strong></p><b>€267</b></div>
-            <div><span class="bundle-type">02</span><p><small data-i18n="types.producer">Producer</small><strong>Jona K.</strong></p><b>€180</b></div>
-            <div><span class="bundle-type">03</span><p><small data-i18n="types.engineer">Engineer</small><strong>Mia L.</strong></p><b>€120</b></div>
-          </div>
-          <div class="match-result-total"><span><small data-i18n="match.packageTotal">Paketpreis</small><strong>€567</strong></span><button class="button button-dark" data-open-builder data-i18n="match.customize">Anpassen & buchen</button></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section section-shell" id="how">
-      <div class="section-heading reveal">
-        <div><span class="kicker" data-i18n="how.kicker">EIN FLOW, KEIN CHAOS</span><h2 data-i18n="how.title">Von der Idee zur Session in drei Schritten.</h2></div>
-        <p data-i18n="how.lead">Keine zehn Tabs, keine DMs, kein Hin und Her. Audora bringt Suche, Verfügbarkeit, Team und Buchung in einen Flow.</p>
-      </div>
-      <div class="steps-grid">
-        <article class="step-card reveal"><span class="step-number">01</span><div class="step-visual search-visual"><span>Berlin</span><span>Hip-Hop</span><span>€600</span><button><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/></svg></button></div><h3 data-i18n="how.step1Title">Projekt beschreiben</h3><p data-i18n="how.step1Text">Ort, Datum, Sound und Budget festlegen — oder einfach Smart Match nutzen.</p></article>
-        <article class="step-card reveal delay-1"><span class="step-number">02</span><div class="step-visual stack-visual"><span><img src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?auto=format&fit=crop&w=160&q=80" alt="" /></span><span><img src="https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=160&q=80" alt="" /></span><span><img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=160&q=80" alt="" /></span><b>96%</b></div><h3 data-i18n="how.step2Title">Perfect Match wählen</h3><p data-i18n="how.step2Text">Studios und Creators nach Stil, Credits, Reviews, Preis und Verfügbarkeit vergleichen.</p></article>
-        <article class="step-card reveal delay-2"><span class="step-number">03</span><div class="step-visual booked-visual"><span class="check-orb">✓</span><strong data-i18n="how.confirmed">Session bestätigt</strong><small>FR · 20:00 · Berlin</small></div><h3 data-i18n="how.step3Title">Einmal buchen</h3><p data-i18n="how.step3Text">Ein Checkout für dein gesamtes Team. Danach liegt alles gebündelt in deinem Session Room.</p></article>
-      </div>
-    </section>
-
-    <section class="section section-shell product-world">
-      <div class="section-heading reveal">
-        <div><span class="kicker" data-i18n="features.kicker">MEHR ALS EIN MARKETPLACE</span><h2 data-i18n="features.title">Gebaut für echte Musikprojekte.</h2></div>
-        <p data-i18n="features.lead">Die Features, die aus einer Buchungsplattform ein Betriebssystem für Sessions machen.</p>
-      </div>
-      <div class="feature-bento">
-        <article class="feature-card feature-large reveal">
-          <div class="feature-copy"><span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5Z"/><path d="M8 8h8M8 12h5M8 16h7"/></svg></span><h3 data-i18n="features.roomTitle">Session Room</h3><p data-i18n="features.roomText">Termin, Team, Dateien, Chat, Notizen, Credits und To-dos in einem gemeinsamen Projektraum.</p></div>
-          <div class="room-ui"><div class="room-top"><span><i></i><i></i><i></i></span><small>Project / Midnight EP</small></div><div class="room-wave"><span></span></div><div class="room-files"><span>mix_v07.wav <b>32 MB</b></span><span>lyrics_final.txt <b>12 KB</b></span></div></div>
-        </article>
-        <article class="feature-card reveal delay-1"><span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6Z"/><path d="m9 12 2 2 4-5"/></svg></span><h3 data-i18n="features.paymentTitle">One Checkout</h3><p data-i18n="features.paymentText">Studio + Team gemeinsam buchen. Transparente Kosten, geschützte Zahlung, klare Storno-Regeln.</p><div class="mini-payment"><span>•••• 4242</span><strong>€567</strong></div></article>
-        <article class="feature-card reveal"><span class="feature-icon"><svg viewBox="0 0 24 24"><path d="M4 18 9 13l4 4 7-9"/><path d="M16 8h4v4"/></svg></span><h3 data-i18n="features.fitTitle">Creative Fit Score</h3><p data-i18n="features.fitText">Nicht nur Sterne: Genre-Fit, Credits, Arbeitsstil, Reaktionszeit und Budget ergeben einen echten Match Score.</p><div class="fit-bars"><span style="--w:96%"><i>96%</i></span><span style="--w:88%"><i>88%</i></span><span style="--w:91%"><i>91%</i></span></div></article>
-        <article class="feature-card feature-wide reveal delay-1"><div class="feature-copy"><span class="feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg></span><h3 data-i18n="features.liveTitle">Live Availability</h3><p data-i18n="features.liveText">Sieh echte freie Slots und kombiniere mehrere Kalender, bevor du überhaupt eine Anfrage sendest.</p></div><div class="availability-ui"><span class="day"><small>FR</small><b>14</b></span><span class="slot disabled">18:00</span><span class="slot active">20:00</span><span class="slot">22:00</span></div></article>
-      </div>
-    </section>
-
-    <section class="section section-shell creator-section" id="creators">
-      <div class="creator-panel reveal">
-        <div class="creator-image"><img src="https://images.unsplash.com/photo-1571330735066-03aaa9429d89?auto=format&fit=crop&w=1100&q=88" alt="Producer working in a studio" /><span class="creator-income"><small data-i18n="creator.earned">Diesen Monat</small><strong>€4.280</strong><i>+18.4%</i></span></div>
-        <div class="creator-copy"><span class="kicker" data-i18n="creator.kicker">FÜR STUDIOS & CREATORS</span><h2 data-i18n-html="creator.title">Mach aus deinem Talent<br><span>ein Business.</span></h2><p data-i18n="creator.lead">Profil erstellen, Verfügbarkeit pflegen, Anfragen verwalten, Zahlungen erhalten und neue Kunden gewinnen — ohne DMs und Excel.</p><ul><li><span>✓</span><span data-i18n="creator.b1">Eigenes professionelles Profil & Portfolio</span></li><li><span>✓</span><span data-i18n="creator.b2">Kalender, Preise & Pakete flexibel steuern</span></li><li><span>✓</span><span data-i18n="creator.b3">Analytics, Buchungen & Auszahlungen an einem Ort</span></li></ul><button class="button button-light button-large" data-i18n="creator.cta">Als Anbieter starten</button></div>
-      </div>
-    </section>
-
-    <section class="section section-shell testimonials">
-      <div class="section-heading reveal"><div><span class="kicker" data-i18n="quotes.kicker">COMMUNITY FIRST</span><h2 data-i18n="quotes.title">So fühlt sich weniger Orga an.</h2></div></div>
-      <div class="quote-track reveal">
-        <article class="quote-card"><div class="stars">★★★★★</div><p data-i18n="quotes.q1">„Ich habe Studio und Engineer für denselben Abend gefunden. Kein Instagram-Pingpong, einfach gebucht.“</p><div><img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=90&q=80" alt=""/><span><strong>Leon M.</strong><small data-i18n="quotes.artist">Independent Artist</small></span></div></article>
-        <article class="quote-card"><div class="stars">★★★★★</div><p data-i18n="quotes.q2">„Der Match Score spart mir absurd viel Zeit. Ich sehe sofort, wer wirklich zu meinem Sound passt.“</p><div><img src="https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=90&q=80" alt=""/><span><strong>Sam K.</strong><small>Producer</small></span></div></article>
-        <article class="quote-card"><div class="stars">★★★★★</div><p data-i18n="quotes.q3">„Für mein Studio ist der gemeinsame Kalender das Killer-Feature. Weniger Leerlauf, weniger Verwaltung.“</p><div><img src="https://images.unsplash.com/photo-1531384441138-2736e62e0919?auto=format&fit=crop&w=90&q=80" alt=""/><span><strong>Marie S.</strong><small data-i18n="quotes.owner">Studio Owner</small></span></div></article>
-      </div>
-    </section>
-
-    <section class="section-shell final-cta reveal">
-      <div class="final-glow"></div>
-      <span class="kicker" data-i18n="final.kicker">READY WHEN YOU ARE</span>
-      <h2 data-i18n-html="final.title">Dein Sound wartet nicht.<br><span>Deine Session auch nicht.</span></h2>
-      <p data-i18n="final.lead">Baue dein Team, finde den Raum und mach aus einer Idee den nächsten Track.</p>
-      <button class="button button-light button-large" data-open-builder><span data-i18n="final.cta">Session starten</span><svg viewBox="0 0 20 20"><path d="M4 10h12M11 5l5 5-5 5"/></svg></button>
-    </section>
-  </main>
-
-  <footer class="site-footer section-shell">
-    <div class="footer-brand"><a class="brand" href="#top"><span class="brand-mark"><svg viewBox="0 0 44 44"><path d="M8 25.5c4.2 0 4.2-7 8.4-7s4.2 12 8.4 12 4.2-17 8.4-17S37.4 22 41 22"/><circle cx="6" cy="25.5" r="2.5"/><circle cx="38" cy="22" r="2.5"/></svg></span><span class="brand-name" data-brand>Audora</span></a><p data-i18n="footer.tagline">Where music finds its people.</p></div>
-    <div class="footer-links"><div><strong data-i18n="footer.discover">Entdecken</strong><a href="#discover" data-i18n="types.studios">Studios</a><a href="#discover" data-i18n="types.producers">Producer</a><a href="#discover" data-i18n="types.engineers">Engineers</a></div><div><strong data-i18n="footer.company">Unternehmen</strong><a href="#how" data-i18n="footer.about">Über uns</a><a href="#creators" data-i18n="nav.creators">Für Anbieter</a><a href="#" data-i18n="footer.careers">Karriere</a></div><div><strong data-i18n="footer.support">Support</strong><a href="#" data-i18n="footer.help">Help Center</a><a href="#" data-i18n="footer.safety">Sicherheit</a><a href="#" data-i18n="footer.contact">Kontakt</a></div></div>
-    <div class="footer-bottom"><span>© 2026 <span data-brand>Audora</span>. <span data-i18n="footer.rights">Alle Rechte vorbehalten.</span></span><span><a href="#" data-i18n="footer.privacy">Datenschutz</a><a href="#" data-i18n="footer.terms">AGB</a><a href="#" data-i18n="footer.imprint">Impressum</a></span></div>
-  </footer>
-
-  <div class="compare-bar" id="compareBar">
-    <div><span class="compare-icon">⇄</span><span><small data-i18n="compare.label">VERGLEICH</small><strong id="compareText">0 / 3</strong></span></div>
-    <div class="compare-thumbs" id="compareThumbs"></div>
-    <button class="button button-light" id="compareButton" data-i18n="compare.cta">Vergleichen</button>
-    <button class="compare-close" id="compareClose" aria-label="Close">×</button>
   </div>
 
-  <div class="modal-backdrop" id="builderModal" aria-hidden="true">
-    <section class="builder-modal" role="dialog" aria-modal="true" aria-labelledby="builderTitle">
-      <button class="modal-close" data-close-modal aria-label="Close">×</button>
-      <div class="builder-progress"><span class="active"></span><span></span><span></span></div>
-      <div class="builder-step active" data-step="1">
-        <span class="kicker" data-i18n="wizard.kicker">SESSION BUILDER</span><h2 id="builderTitle" data-i18n="wizard.step1Title">Was möchtest du machen?</h2><p data-i18n="wizard.step1Lead">Wähle dein Ziel. Wir passen die nächsten Schritte daran an.</p>
-        <div class="goal-grid"><button data-goal="record"><span>🎙️</span><strong data-i18n="wizard.record">Song aufnehmen</strong><small data-i18n="wizard.recordSub">Studio + optionales Team</small></button><button data-goal="produce"><span>🎛️</span><strong data-i18n="wizard.produce">Track produzieren</strong><small data-i18n="wizard.produceSub">Producer + Studio</small></button><button data-goal="mix"><span>🎚️</span><strong data-i18n="wizard.mix">Mix & Master</strong><small data-i18n="wizard.mixSub">Engineer remote oder vor Ort</small></button><button data-goal="write"><span>✍️</span><strong data-i18n="wizard.write">Songwriting</strong><small data-i18n="wizard.writeSub">Songwriter & Creative Session</small></button></div>
-      </div>
-      <div class="builder-step" data-step="2">
-        <span class="kicker" data-i18n="wizard.kicker">SESSION BUILDER</span><h2 data-i18n="wizard.step2Title">Wie soll es klingen?</h2><p data-i18n="wizard.step2Lead">Mehrfachauswahl ist möglich.</p>
-        <div class="chip-select" id="vibeSelect"><button>Hip-Hop</button><button>R&B</button><button>Pop</button><button>Electronic</button><button>Rock</button><button>Afrobeats</button><button>Indie</button><button>Podcast</button></div>
-        <div class="wizard-fields"><label><span data-i18n="wizard.city">Stadt</span><select><option>Berlin</option><option>Frankfurt</option><option>Hamburg</option><option>Köln</option><option>München</option></select></label><label><span data-i18n="wizard.date">Datum</span><input type="date" /></label><label><span data-i18n="wizard.budget">Budget</span><select><option>€200–400</option><option>€400–700</option><option>€700–1.200</option><option>€1.200+</option></select></label></div>
-      </div>
-      <div class="builder-step" data-step="3">
-        <span class="ai-pill"><svg viewBox="0 0 24 24"><path d="m12 2 1.7 5.3L19 9l-5.3 1.7L12 16l-1.7-5.3L5 9l5.3-1.7Z"/></svg><span data-i18n="wizard.matching">SMART MATCH</span></span><h2 data-i18n="wizard.step3Title">Dein Setup ist bereit.</h2><p data-i18n="wizard.step3Lead">Wir haben Verfügbarkeit, Stil, Preis und Bewertungen kombiniert.</p>
-        <div class="wizard-result"><div class="wizard-result-score"><span>97%</span><small data-i18n="builder.match">Match</small></div><div class="wizard-result-list"><div><img src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?auto=format&fit=crop&w=160&q=80" alt=""><span><small data-i18n="types.studio">Studio</small><strong>Neon Room Berlin</strong></span><b>€267</b></div><div><img src="https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=160&q=80" alt=""><span><small data-i18n="types.producer">Producer</small><strong>Jona K.</strong></span><b>€180</b></div><div><img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=160&q=80" alt=""><span><small data-i18n="types.engineer">Engineer</small><strong>Mia L.</strong></span><b>€120</b></div></div><div class="wizard-total"><span><small data-i18n="wizard.total">Gesamt</small><strong>€567</strong></span><span class="pill"><span class="status-dot"></span><span data-i18n="builder.instant">Sofort buchbar</span></span></div></div>
-      </div>
-      <div class="builder-footer"><button class="button button-ghost" id="builderBack" data-i18n="wizard.back">Zurück</button><button class="button button-primary" id="builderNext"><span data-i18n="wizard.next">Weiter</span><svg viewBox="0 0 20 20"><path d="M4 10h12M11 5l5 5-5 5"/></svg></button></div>
-    </section>
-  </div>
+  <nav class="mobile-nav" aria-label="Mobile navigation"><button class="active" data-route="home"><svg viewBox="0 0 24 24"><path d="m4 10 8-7 8 7v10h-6v-6h-4v6H4Z"/></svg><span data-i18n="nav.home">Start</span></button><button data-route="discover"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span data-i18n="nav.discover">Entdecken</span></button><button class="mobile-build" data-route="build"><span class="plus-orb">＋</span><span data-i18n="nav.buildShort">Bauen</span></button><button data-route="sessions"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg><span data-i18n="nav.sessions">Sessions</span></button><button data-route="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/></svg><span data-i18n="nav.profile">Profil</span></button></nav>
 
-  <div class="modal-backdrop" id="profileModal" aria-hidden="true">
-    <section class="profile-modal" role="dialog" aria-modal="true">
-      <button class="modal-close" data-profile-close aria-label="Close">×</button>
-      <div id="profileContent"></div>
-    </section>
-  </div>
+  <button class="ai-fab" id="aiFab" aria-label="Audora AI">✦</button>
 
-  <button class="ai-assistant" id="aiAssistant" aria-label="Audora AI"><svg viewBox="0 0 24 24"><path d="m12 2 1.7 5.3L19 9l-5.3 1.7L12 16l-1.7-5.3L5 9l5.3-1.7Z"/><path d="m19 15 .9 2.6 2.6.9-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9Z"/></svg><span data-i18n="assistant.label">Frag Audora</span></button>
-  <div class="assistant-popover" id="assistantPopover">
-    <div class="assistant-head"><span class="ai-orb"><svg viewBox="0 0 24 24"><path d="m12 2 1.7 5.3L19 9l-5.3 1.7L12 16l-1.7-5.3L5 9l5.3-1.7Z"/></svg></span><div><strong data-i18n="assistant.title">Audora AI</strong><small><span class="status-dot"></span><span data-i18n="assistant.online">Online</span></small></div><button id="assistantClose">×</button></div>
-    <div class="assistant-body"><div class="assistant-message" data-i18n="assistant.message">Beschreib mir deine Session — ich finde dir Studio und Team.</div><div class="assistant-suggestions"><button data-i18n="assistant.s1">Hip-Hop Session morgen in Berlin</button><button data-i18n="assistant.s2">Producer unter €250 finden</button><button data-i18n="assistant.s3">Studio mit Vocal Booth</button></div></div>
-    <div class="assistant-input"><input type="text" data-i18n-placeholder="assistant.placeholder"/><button><svg viewBox="0 0 24 24"><path d="m4 12 16-8-6 16-2-6Z"/></svg></button></div>
-  </div>
+  <aside class="ai-panel overlay-panel" id="aiPanel" aria-hidden="true"><div class="overlay-head"><div><span class="ai-orb">✦</span><span><strong data-i18n="ai.title">Audora AI</strong><small><i></i><span data-i18n="ai.online">Online</span></small></span></div><button data-close-panel="aiPanel">×</button></div><div class="ai-body"><div class="ai-message" data-i18n="ai.message">Beschreib mir kurz, was du machen willst. Ich kann direkt suchen oder eine komplette Session zusammenstellen.</div><div class="ai-suggestions"><button data-ai="build" data-i18n="ai.s1">Hip-Hop Session Freitag in Berlin</button><button data-ai="producer" data-i18n="ai.s2">Producer unter 250 € finden</button><button data-ai="studio" data-i18n="ai.s3">Studio mit Vocal Booth heute</button></div></div><form class="ai-input" id="aiForm"><input id="aiText" data-i18n-placeholder="ai.placeholder" placeholder="Was planst du?"><button type="submit"><svg viewBox="0 0 24 24"><path d="m4 12 16-8-6 16-2-6Z"/></svg></button></form></aside>
 
-  <nav class="mobile-nav" aria-label="Mobile navigation"><a class="active" href="#top"><svg viewBox="0 0 24 24"><path d="m4 10 8-7 8 7v10h-6v-6h-4v6H4Z"/></svg><span data-i18n="mobile.home">Home</span></a><a href="#discover"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span data-i18n="mobile.search">Suche</span></a><button data-open-builder><span class="mobile-plus">+</span><span data-i18n="mobile.build">Bauen</span></button><a href="#"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/></svg><span data-i18n="mobile.saved">Gespeichert</span></a><a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/></svg><span data-i18n="mobile.profile">Profil</span></a></nav>
+  <aside class="notification-panel overlay-panel" id="notificationPanel" aria-hidden="true"><div class="overlay-head"><div><span><strong data-i18n="notifications.title">Benachrichtigungen</strong><small data-i18n="notifications.subtitle">3 neue Updates</small></span></div><button data-close-panel="notificationPanel">×</button></div><div class="notification-list"><button data-route="sessions"><span class="activity-icon mint">✓</span><p><strong data-i18n="notifications.n1">Mia hat deine Session bestätigt</strong><small data-i18n="notifications.now">Gerade eben</small></p></button><button data-route="inbox"><span class="activity-icon purple">💬</span><p><strong data-i18n="notifications.n2">Neue Nachricht von Jona K.</strong><small>12 Min.</small></p></button><button data-route="discover"><span class="activity-icon amber">★</span><p><strong data-i18n="notifications.n3">3 neue Studios passen zu dir</strong><small>1 Std.</small></p></button></div></aside>
+
+  <div class="modal-backdrop" id="listingModal" aria-hidden="true"><section class="detail-modal"><button class="modal-close" data-close-modal>×</button><div id="listingDetail"></div></section></div>
+  <div class="modal-backdrop" id="settingsModal" aria-hidden="true"><section class="small-modal"><button class="modal-close" data-close-modal>×</button><div id="settingsContent"></div></section></div>
+
+  <aside class="session-room" id="sessionRoom" aria-hidden="true"><div class="session-room-head"><button class="back-circle" id="closeSessionRoom"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button><div><small data-i18n="room.label">SESSION ROOM</small><strong>Midnight EP</strong></div><span class="room-status"><i></i><span data-i18n="room.confirmed">Bestätigt</span></span></div><div class="room-tabs" id="roomTabs"><button class="active" data-room-tab="overview" data-i18n="room.overview">Übersicht</button><button data-room-tab="files" data-i18n="room.files">Dateien</button><button data-room-tab="team" data-i18n="room.team">Team</button><button data-room-tab="chat" data-i18n="room.chat">Chat</button></div><div class="room-content" id="roomContent"></div></aside>
 
   <div class="toast" id="toast"><span>✓</span><p></p></div>
 
-  <script src="./i18n.js"></script>
-  <script src="./app.js"></script>
+  <script src="./i18n.js?v=3"></script>
+  <script src="./app.js?v=3"></script>
 </body>
 </html>
