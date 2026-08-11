@@ -1,0 +1,42 @@
+name: Validate prototype
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          node --check app.js
+          node --check i18n.js
+      - name: Verify translation coverage
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          global.window={};
+          require('./i18n.js');
+          const dict=window.I18N;
+          const html=fs.readFileSync('index.html','utf8');
+          const keys=[...html.matchAll(/data-i18n(?:-html|-placeholder)?="([^"]+)"/g)].map(m=>m[1]);
+          const get=(o,p)=>p.split('.').reduce((v,k)=>v&&v[k],o);
+          for(const locale of ['de','en']){
+            const missing=[...new Set(keys)].filter(k=>get(dict[locale],k)===undefined);
+            if(missing.length){console.error(`${locale} missing:`,missing.join(', '));process.exit(1)}
+          }
+          console.log(`Translation coverage OK: ${new Set(keys).size} interface keys in DE + EN`);
+          NODE
+      - name: Verify required prototype files
+        run: |
+          test -s index.html
+          test -s styles.css
+          test -s app.js
+          test -s i18n.js
