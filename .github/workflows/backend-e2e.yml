@@ -1,0 +1,78 @@
+name: Audora backend E2E
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/backend-e2e.yml']
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      BASE: https://audora.smarbiz.sbs
+      HOST: ${{ secrets.HOST }}
+      PASS: ${{ secrets.PASS }}
+    steps:
+      - name: Exercise real API flows
+        shell: bash
+        run: |
+          set -euo pipefail
+          COOKIE=/tmp/audora-cookie.txt
+          EMAIL="ci-${GITHUB_RUN_ID}@audora.local"
+          PASSWORD='AudoraTest2026!'
+
+          curl -fsS "$BASE/api/health/" | grep -q '"ok": true'
+          curl -fsS "$BASE/api/listings/" | grep -q 'neon-room'
+
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/auth/register/" \
+            -H 'Content-Type: application/json' \
+            --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"name\":\"CI User\"}" | grep -q '"ok": true'
+
+          curl -fsS -c "$COOKIE" -b "$COOKIE" "$BASE/api/bootstrap/" | grep -q "$EMAIL"
+
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/favorites/neon-room/" \
+            -H 'Content-Type: application/json' --data '{"toggle":false}' | grep -q '"active": true'
+          curl -fsS -c "$COOKIE" -b "$COOKIE" "$BASE/api/bootstrap/" | grep -q 'neon-room'
+
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/match/" \
+            -H 'Content-Type: application/json' \
+            --data '{"goal":"record","city":"Berlin","genres":["Hip-Hop"],"budget":900}' > /tmp/match.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/match.json'))
+          assert d['score'] >= 80 and d['studio'] and len(d['team']) >= 1
+          PY
+
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/sessions/" \
+            -H 'Content-Type: application/json' \
+            --data '{"title":"CI E2E Session","goal":"record","city":"Berlin","genres":["Hip-Hop"],"budget":900,"duration_hours":3,"start_at":"2026-08-20T20:00:00Z","status":"confirmed"}' > /tmp/session.json
+          SESSION_ID="$(python3 -c "import json;print(json.load(open('/tmp/session.json'))['id'])")"
+          curl -fsS -c "$COOKIE" -b "$COOKIE" "$BASE/api/sessions/$SESSION_ID/" > /tmp/session-detail.json
+          TASK_ID="$(python3 -c "import json;d=json.load(open('/tmp/session-detail.json'));print(next(x['id'] for x in d['tasks'] if not x['done']))")"
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X PATCH "$BASE/api/tasks/$TASK_ID/" \
+            -H 'Content-Type: application/json' --data '{"done":true}' | grep -q '"done": true'
+
+          echo 'Audora E2E upload' > /tmp/e2e.txt
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/sessions/$SESSION_ID/files/" \
+            -F file=@/tmp/e2e.txt | grep -q 'e2e.txt'
+
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/conversations/listing/jona-k/" \
+            -H 'Content-Type: application/json' --data '{}' > /tmp/conversation.json
+          CONVERSATION_ID="$(python3 -c "import json;print(json.load(open('/tmp/conversation.json'))['id'])")"
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/conversations/$CONVERSATION_ID/" \
+            -H 'Content-Type: application/json' --data '{"text":"CI backend message"}' | grep -q 'CI backend message'
+
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X PATCH "$BASE/api/provider/dashboard/" \
+            -H 'Content-Type: application/json' --data '{"active":true}' | grep -q '"active": true'
+
+          echo 'All Audora backend E2E flows passed.'
+
+      - name: Cleanup E2E user
+        if: always()
+        shell: bash
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          export SSHPASS="$PASS"
+          EMAIL="ci-${GITHUB_RUN_ID}@audora.local"
+          sshpass -e ssh -o StrictHostKeyChecking=no root@$HOST "set -a; source /etc/audora/audora.env; set +a; cd /opt/audora/app/backend; /opt/audora/venv/bin/python manage.py shell -c \"from django.contrib.auth import get_user_model; U=get_user_model(); u=U.objects.filter(email='$EMAIL').first(); print('cleanup', bool(u)); u and u.delete()\""
