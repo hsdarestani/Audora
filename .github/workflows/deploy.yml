@@ -85,10 +85,7 @@ jobs:
           exit 1
 
       - name: Prepare release
-        shell: bash
-        run: |
-          set -euo pipefail
-          tar -czf /tmp/audora-release.tgz index.html styles.css mobile-polish.css typography.css app.js api.js i18n.js requirements.txt backend
+        run: tar -czf /tmp/audora-release.tgz index.html styles.css mobile-polish.css typography.css app.js api.js i18n.js requirements.txt backend
 
       - name: Upload and install full stack
         shell: bash
@@ -96,11 +93,9 @@ jobs:
           set -euo pipefail
           export SSHPASS="$DEPLOY_PASS"
           if [[ "$SSH_AUTH" == key ]]; then
-            SCP="scp -i /tmp/audora_ssh_key"
-            SSH="ssh -i /tmp/audora_ssh_key"
+            SCP="scp -i /tmp/audora_ssh_key"; SSH="ssh -i /tmp/audora_ssh_key"
           else
-            SCP="sshpass -e scp"
-            SSH="sshpass -e ssh"
+            SCP="sshpass -e scp"; SSH="sshpass -e ssh"
           fi
           $SCP -P "$SSH_PORT" -o StrictHostKeyChecking=no /tmp/audora-release.tgz "$SSH_TARGET:/tmp/audora-release.tgz"
           REMOTE_SHELL="bash -s"
@@ -117,7 +112,6 @@ jobs:
           apt-get update -qq
           apt-get install -y -qq nginx python3 python3-venv postgresql postgresql-contrib certbot python3-certbot-nginx curl openssl
           systemctl enable --now postgresql >/dev/null 2>&1 || true
-
           mkdir -p "$APP_ROOT" "$WEBROOT" /etc/audora
           tar -xzf /tmp/audora-release.tgz -C "$APP_ROOT"
           rm -f /tmp/audora-release.tgz
@@ -138,10 +132,7 @@ jobs:
             chmod 600 "$ENVFILE"
           fi
 
-          set -a
-          source "$ENVFILE"
-          set +a
-
+          set -a; source "$ENVFILE"; set +a
           if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='audora'" | grep -q 1; then
             runuser -u postgres -- psql -c "CREATE USER audora WITH PASSWORD '$AUDORA_DB_PASSWORD';"
           else
@@ -154,14 +145,12 @@ jobs:
           if [[ ! -x "$VENV/bin/python" ]]; then python3 -m venv "$VENV"; fi
           "$VENV/bin/pip" install -q --upgrade pip
           "$VENV/bin/pip" install -q -r "$APP_ROOT/requirements.txt"
-
           cd "$APP_ROOT/backend"
           "$VENV/bin/python" manage.py makemigrations core --noinput
           "$VENV/bin/python" manage.py migrate --noinput
           "$VENV/bin/python" manage.py seed_audora
           "$VENV/bin/python" manage.py collectstatic --noinput
           "$VENV/bin/python" manage.py check
-
           mkdir -p "$APP_ROOT/backend/media"
           chown -R www-data:www-data "$APP_ROOT/backend/media" "$APP_ROOT/backend/staticfiles"
 
@@ -169,7 +158,6 @@ jobs:
           [Unit]
           Description=Audora Django API
           After=network.target postgresql.service
-
           [Service]
           Type=simple
           User=www-data
@@ -179,7 +167,6 @@ jobs:
           ExecStart=$VENV/bin/gunicorn audora_backend.wsgi:application --bind 127.0.0.1:8008 --workers 3 --timeout 60 --access-logfile - --error-logfile -
           Restart=always
           RestartSec=3
-
           [Install]
           WantedBy=multi-user.target
           UNIT
@@ -193,9 +180,7 @@ jobs:
           cat "$WEBROOT/mobile-polish.css" >> "$WEBROOT/styles.css"
           printf '\n\n/* ===== global typography layer ===== */\n' >> "$WEBROOT/styles.css"
           cat "$WEBROOT/typography.css" >> "$WEBROOT/styles.css"
-          if ! grep -q 'src="/api.js"' "$WEBROOT/index.html"; then
-            sed -i 's#</body>#  <script src="/api.js"></script>\n</body>#' "$WEBROOT/index.html"
-          fi
+          if ! grep -q 'src="/api.js"' "$WEBROOT/index.html"; then sed -i 's#</body>#  <script src="/api.js"></script>\n</body>#' "$WEBROOT/index.html"; fi
           chown -R www-data:www-data "$WEBROOT"
 
           cat > /etc/nginx/sites-available/audora.smarbiz.sbs <<NGINX
@@ -206,7 +191,6 @@ jobs:
               root $WEBROOT;
               index index.html;
               client_max_body_size 50M;
-
               location /api/ {
                   proxy_pass http://127.0.0.1:8008;
                   proxy_set_header Host \$host;
@@ -215,7 +199,6 @@ jobs:
                   proxy_set_header X-Forwarded-Proto \$scheme;
                   proxy_http_version 1.1;
               }
-
               location /admin/ {
                   proxy_pass http://127.0.0.1:8008;
                   proxy_set_header Host \$host;
@@ -223,30 +206,16 @@ jobs:
                   proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
                   proxy_set_header X-Forwarded-Proto \$scheme;
               }
-
               location /static-admin/ { alias $APP_ROOT/backend/staticfiles/; expires 7d; }
               location /media/ { alias $APP_ROOT/backend/media/; expires 1h; }
-
-              location ~* \.(?:css|js)$ {
-                  expires -1;
-                  add_header Cache-Control "no-cache, no-store, must-revalidate";
-                  try_files \$uri =404;
-              }
-
-              location ~* \.(?:jpg|jpeg|gif|png|svg|webp|ico|woff2?)$ {
-                  expires 7d;
-                  add_header Cache-Control "public, max-age=604800";
-                  try_files \$uri =404;
-              }
-
+              location ~* \.(?:css|js)$ { expires -1; add_header Cache-Control "no-cache, no-store, must-revalidate"; try_files \$uri =404; }
+              location ~* \.(?:jpg|jpeg|gif|png|svg|webp|ico|woff2?)$ { expires 7d; add_header Cache-Control "public, max-age=604800"; try_files \$uri =404; }
               location / { try_files \$uri \$uri/ /index.html; }
           }
           NGINX
-
           ln -sfn /etc/nginx/sites-available/audora.smarbiz.sbs /etc/nginx/sites-enabled/audora.smarbiz.sbs
           nginx -t
           systemctl reload nginx || systemctl restart nginx
-
           certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
           nginx -t
           systemctl reload nginx
@@ -256,7 +225,7 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:8008/api/health/ | grep -q '"ok": true'
-          curl -fsS -H 'Host: audora.smarbiz.sbs' http://127.0.0.1/ | grep -qi 'Audora'
+          curl -kfsSL --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" | grep -qi Audora
           REMOTE
 
       - name: Verify production
