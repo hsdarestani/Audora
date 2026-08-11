@@ -1,4 +1,4 @@
-name: Validate prototype
+name: Validate Audora
 
 on:
   push:
@@ -10,14 +10,20 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Check JavaScript syntax
         run: |
           node --check app.js
+          node --check api.js
           node --check i18n.js
+      - name: Check backend Python syntax
+        run: python -m compileall -q backend
       - name: Verify translation coverage
         run: |
           node <<'NODE'
@@ -34,9 +40,14 @@ jobs:
           }
           console.log(`Translation coverage OK: ${new Set(keys).size} interface keys in DE + EN`);
           NODE
-      - name: Verify required prototype files
+      - name: Verify required full-stack files
         run: |
           test -s index.html
           test -s styles.css
           test -s app.js
+          test -s api.js
           test -s i18n.js
+          test -s requirements.txt
+          test -s backend/manage.py
+          test -s backend/core/models.py
+          test -s backend/core/views.py
