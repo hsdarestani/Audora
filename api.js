@@ -1,193 +1,165 @@
-/* Audora backend bridge — keeps the polished frontend while persisting real state. */
+/* Audora full-stack bridge — real persistence while preserving the prototype UI. */
 (() => {
   const API = {
     async request(path, options={}) {
-      const opts={credentials:'same-origin',headers:{...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...(options.headers||{})},...options};
+      const isForm=options.body instanceof FormData;
+      const opts={credentials:'same-origin',headers:{...(isForm?{}:{'Content-Type':'application/json'}),...(options.headers||{})},...options};
       const response=await fetch(`/api${path}`,opts);
       let data={};
       try{data=await response.json()}catch(_e){}
-      if(!response.ok) throw new Error(data.error||`HTTP ${response.status}`);
+      if(!response.ok){const err=new Error(data.message||data.error||`HTTP ${response.status}`);err.code=data.error;err.status=response.status;err.data=data;throw err}
       return data;
     },
-    bootstrap(){return this.request('/bootstrap/')},
-    listings(){return this.request('/listings/')},
-    favorite(id, active){return this.request(`/favorites/${encodeURIComponent(id)}/`,{method:active?'POST':'DELETE',body:active?JSON.stringify({toggle:false}):undefined})},
+    bootstrap(){return this.request('/bootstrap/')}, listings(){return this.request('/listings/')},
+    register(payload){return this.request('/auth/register/',{method:'POST',body:JSON.stringify(payload)})},
+    login(payload){return this.request('/auth/login/',{method:'POST',body:JSON.stringify(payload)})},
+    logout(){return this.request('/auth/logout/',{method:'POST',body:'{}'})},
+    favorite(id,active){return this.request(`/favorites/${encodeURIComponent(id)}/`,{method:active?'POST':'DELETE',body:active?JSON.stringify({toggle:false}):undefined})},
     createSession(payload){return this.request('/sessions/',{method:'POST',body:JSON.stringify(payload)})},
-    session(id){return this.request(`/sessions/${id}/`)},
+    session(id){return this.request(`/sessions/${id}/`)}, sessionPatch(id,payload){return this.request(`/sessions/${id}/`,{method:'PATCH',body:JSON.stringify(payload)})},
     task(id,done){return this.request(`/tasks/${id}/`,{method:'PATCH',body:JSON.stringify({done})})},
     upload(sessionId,file){const form=new FormData();form.append('file',file);return this.request(`/sessions/${sessionId}/files/`,{method:'POST',body:form})},
-    conversations(){return this.request('/conversations/')},
-    conversation(id){return this.request(`/conversations/${id}/`)},
+    conversations(){return this.request('/conversations/')}, conversation(id){return this.request(`/conversations/${id}/`)},
     message(id,text){return this.request(`/conversations/${id}/`,{method:'POST',body:JSON.stringify({text})})},
     conversationForListing(slug){return this.request(`/conversations/listing/${encodeURIComponent(slug)}/`,{method:'POST',body:'{}'})},
-    notifications(){return this.request('/notifications/')},
-    readNotifications(){return this.request('/notifications/',{method:'PATCH',body:JSON.stringify({all:true})})},
-    provider(active){return this.request('/provider/dashboard/',{method:'PATCH',body:JSON.stringify({active})})},
+    notifications(){return this.request('/notifications/')}, readNotifications(){return this.request('/notifications/',{method:'PATCH',body:JSON.stringify({all:true})})},
+    provider(active){return this.request('/provider/dashboard/',{method:'PATCH',body:JSON.stringify({active})})}, providerDashboard(){return this.request('/provider/dashboard/')},
+    providerListings(){return this.request('/provider/listings/')},
+    createProviderListing(payload){return this.request('/provider/listings/',{method:'POST',body:JSON.stringify(payload)})},
+    updateProviderListing(id,payload){return this.request(`/provider/listings/${encodeURIComponent(id)}/`,{method:'PATCH',body:JSON.stringify(payload)})},
+    deleteProviderListing(id){return this.request(`/provider/listings/${encodeURIComponent(id)}/`,{method:'DELETE'})},
+    availability(id){return this.request(`/listings/${encodeURIComponent(id)}/availability/`)},
+    createAvailability(id,payload){return this.request(`/listings/${encodeURIComponent(id)}/availability/`,{method:'POST',body:JSON.stringify(payload)})},
+    deleteAvailability(id){return this.request(`/availability/${id}/`,{method:'DELETE'})},
+    reviews(id){return this.request(`/listings/${encodeURIComponent(id)}/reviews/`)},
+    review(id,payload){return this.request(`/listings/${encodeURIComponent(id)}/reviews/`,{method:'POST',body:JSON.stringify(payload)})},
     match(payload){return this.request('/match/',{method:'POST',body:JSON.stringify(payload)})},
   };
   window.AudoraAPI=API;
 
   const localizedDate=(iso)=>{
     if(!iso)return {de:'Termin offen',en:'Date open'};
-    const d=new Date(iso);
-    if(Number.isNaN(d.getTime()))return {de:iso,en:iso};
+    const d=new Date(iso);if(Number.isNaN(d.getTime()))return {de:iso,en:iso};
     return {
       de:new Intl.DateTimeFormat('de-DE',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(d),
       en:new Intl.DateTimeFormat('en-GB',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(d)
     };
   };
-
-  const appSession=(s)=>({
-    id:s.id,state:s.state,title:s.title,date:localizedDate(s.date),place:s.place,status:s.status,image:s.image,
-    team:(s.team||[]).map(x=>x.id),total:s.total||0,server:true
-  });
-
-  const appConversation=(c)=>({
-    id:c.id,name:c.name,image:c.image||'',preview:{de:c.preview||'',en:c.preview||''},time:formatTime(c.time),
-    messages:(c.messages||[]).map(m=>({me:m.me,de:m.text,en:m.text,time:formatTime(m.time)})),server:true
-  });
-
-  function formatTime(value){
-    if(!value)return '';
-    const d=new Date(value);if(Number.isNaN(d.getTime()))return value;
-    return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-  }
-
-  function notifyError(err){
-    console.error('[Audora API]',err);
-    try{showToast(lang==='de'?'Server-Verbindung fehlgeschlagen. Bitte erneut versuchen.':'Server connection failed. Please try again.')}catch(_e){}
-  }
+  const appSession=s=>({id:s.id,state:s.state,title:s.title,date:localizedDate(s.date),place:s.place,status:s.status,image:s.image,team:(s.team||[]).map(x=>x.id),total:s.total||0,server:true});
+  const appConversation=c=>({id:c.id,name:c.name,image:c.image||'',preview:{de:c.preview||'',en:c.preview||''},time:formatTime(c.time),messages:(c.messages||[]).map(m=>({me:m.me,de:m.text,en:m.text,time:formatTime(m.time)})),server:true});
+  function formatTime(value){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?value:d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+  function formatDateTime(value){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?value:new Intl.DateTimeFormat(lang==='de'?'de-DE':'en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(d)}
+  function notifyError(err){console.error('[Audora API]',err);let text=lang==='de'?'Aktion konnte nicht gespeichert werden.':'Could not save this action.';if(err?.code==='slot_just_booked'||err?.code==='no_available_studio'||err?.code==='no_available_team')text=lang==='de'?'Dieser Termin ist gerade nicht mehr verfügbar. Bitte wähle einen anderen Termin.':'That slot is no longer available. Please choose another time.';try{showToast(text)}catch(_e){}}
 
   let serverNotifications=[];
   let currentServerSession=null;
+  let currentUser=null;
+  let providerData=null;
+  let listingReviews=new Map();
+
+  function ensureFunctionalModal(){
+    if(document.getElementById('functionalModal'))return;
+    document.body.insertAdjacentHTML('beforeend',`<div class="modal-backdrop" id="functionalModal" aria-hidden="true"><section class="functional-modal" id="functionalContent"><button class="modal-close" data-functional-close>×</button><div id="functionalBody"></div></section></div>`);
+  }
+  function openFunctional(html,wide=false){ensureFunctionalModal();const modal=$('#functionalModal');$('#functionalBody').innerHTML=html;$('#functionalContent').classList.toggle('wide',wide);modal.classList.add('open');modal.setAttribute('aria-hidden','false')}
+  function closeFunctional(){const modal=$('#functionalModal');if(!modal)return;modal.classList.remove('open');modal.setAttribute('aria-hidden','true')}
 
   async function hydrate(){
     try{
       const [boot,listingData]=await Promise.all([API.bootstrap(),API.listings()]);
-      if(Array.isArray(listingData.results)&&listingData.results.length){
-        listings.splice(0,listings.length,...listingData.results);
-      }
-      favorites.clear();(boot.favorites||[]).forEach(id=>favorites.add(id));
-      localStorage.removeItem('audora-favorites');
-      if(Array.isArray(boot.sessions)&&boot.sessions.length){sessions.splice(0,sessions.length,...boot.sessions.map(appSession));}
-      if(Array.isArray(boot.conversations)&&boot.conversations.length){
-        conversations.splice(0,conversations.length,...boot.conversations.map(appConversation));
-        activeChat=conversations[0]?.id||activeChat;
-      }
-      providerMode=!!boot.provider_mode;
-      serverNotifications=boot.notifications||[];
-      renderHome();renderDiscover();renderSaved();renderSessions();renderConversations();renderChat();updateFavoriteCounts();syncProviderUI();renderNotifications();
+      currentUser=boot.user||null;
+      if(Array.isArray(listingData.results)&&listingData.results.length)listings.splice(0,listings.length,...listingData.results);
+      favorites.clear();(boot.favorites||[]).forEach(id=>favorites.add(id));localStorage.removeItem('audora-favorites');
+      sessions.splice(0,sessions.length,...(boot.sessions||[]).map(appSession));
+      conversations.splice(0,conversations.length,...(boot.conversations||[]).map(appConversation));
+      if(conversations.length)activeChat=conversations[0].id;
+      providerMode=!!boot.provider_mode;serverNotifications=boot.notifications||[];
+      try{providerData=await API.providerDashboard()}catch(_e){providerData=null}
+      renderHome();renderDiscover();renderSaved();renderSessions();renderConversations();renderChat();updateFavoriteCounts();syncProviderUI();renderNotifications();renderAccountStatus();renderProviderMetrics();
       document.body.dataset.backend='online';
-    }catch(err){document.body.dataset.backend='offline';notifyError(err)}
+    }catch(err){document.body.dataset.backend='offline';renderAccountStatus();notifyError(err)}
   }
 
-  function renderNotifications(){
-    const list=document.querySelector('#notificationPanel .notification-list');
-    if(!list||!serverNotifications.length)return;
-    list.innerHTML=serverNotifications.map(n=>`<button data-notification-id="${n.id}"><span class="activity-icon ${n.read?'':'purple'}">${n.read?'✓':'•'}</span><p><strong>${escapeHTML(n.title?.[lang]||'')}</strong><small>${escapeHTML(n.text?.[lang]||'')}</small></p></button>`).join('');
-    const unread=serverNotifications.filter(n=>!n.read).length;
-    const badge=document.querySelector('.notification-badge');if(badge){badge.textContent=unread;badge.style.display=unread?'grid':'none'}
+  function renderAccountStatus(){
+    const top=$('.top-actions');
+    if(top){let status=$('#backendStatus');if(!status){status=document.createElement('button');status.id='backendStatus';status.className='backend-status';status.addEventListener('click',openAccount);top.insertBefore(status,top.firstChild)}const demo=!currentUser||currentUser.email==='demo@audora.local';status.classList.toggle('online',document.body.dataset.backend==='online');status.innerHTML=`<i></i><span>${demo?(lang==='de'?'Demo':'Demo'):escapeHTML(currentUser.name||currentUser.email)}</span>`}
+    const stack=$('.settings-stack');if(stack&&!$('#accountEntry')){const wrap=document.createElement('div');wrap.className='account-entry';wrap.id='accountEntry';wrap.innerHTML='<button type="button"><span><small></small><strong></strong></span><b>→</b></button>';wrap.querySelector('button').addEventListener('click',openAccount);stack.prepend(wrap)}
+    const entry=$('#accountEntry');if(entry){const demo=!currentUser||currentUser.email==='demo@audora.local';entry.querySelector('small').textContent=demo?(lang==='de'?'DEMO-MODUS':'DEMO MODE'):(lang==='de'?'ANGEMELDET ALS':'SIGNED IN AS');entry.querySelector('strong').textContent=demo?(lang==='de'?'Anmelden oder Account erstellen':'Sign in or create account'):(currentUser.name||currentUser.email)}
   }
+
+  function openAccount(){
+    const demo=!currentUser||currentUser.email==='demo@audora.local';
+    if(!demo){openFunctional(`<h2>${lang==='de'?'Dein Account':'Your account'}</h2><p>${lang==='de'?'Deine Daten und Session sind serverseitig gespeichert.':'Your data and session are stored on the server.'}</p><div class="account-user-card"><span>${escapeHTML((currentUser.name||'A').slice(0,1).toUpperCase())}</span><div><strong>${escapeHTML(currentUser.name||currentUser.username)}</strong><small>${escapeHTML(currentUser.email||'')}</small></div></div><button class="logout-btn" data-auth-logout>${lang==='de'?'Abmelden':'Log out'}</button>`);return}
+    openFunctional(`<h2>${lang==='de'?'Willkommen bei Audora':'Welcome to Audora'}</h2><p>${lang==='de'?'Im Demo-Modus kannst du alles testen. Mit einem Account bleiben deine eigenen Sessions, Favoriten und Nachrichten getrennt gespeichert.':'Demo mode lets you test everything. With an account your own sessions, favorites and messages stay separate.'}</p><div class="functional-tabs"><button class="active" data-auth-tab="login">${lang==='de'?'Anmelden':'Log in'}</button><button data-auth-tab="register">${lang==='de'?'Account erstellen':'Create account'}</button></div><form class="functional-form" id="authForm"><label class="auth-name" style="display:none"><span>${lang==='de'?'NAME':'NAME'}</span><input name="name" autocomplete="name"></label><label><span>E-MAIL</span><input name="email" type="email" autocomplete="email" required></label><label><span>${lang==='de'?'PASSWORT':'PASSWORD'}</span><input name="password" type="password" minlength="8" autocomplete="current-password" required></label><div class="functional-message" id="authMessage"></div><button class="primary-btn" type="submit">${lang==='de'?'Anmelden':'Log in'}</button></form>`);
+  }
+
+  async function submitAuth(form){
+    const mode=$('[data-auth-tab].active','#functionalBody')?.dataset.authTab||'login';const fd=new FormData(form);const payload={email:fd.get('email'),password:fd.get('password'),name:fd.get('name')};const msg=$('#authMessage');msg.textContent=lang==='de'?'Wird gespeichert…':'Saving…';msg.className='functional-message';
+    try{const result=mode==='register'?await API.register(payload):await API.login(payload);currentUser=result.user;msg.textContent=lang==='de'?'Erfolgreich.':'Success.';msg.classList.add('success');closeFunctional();await hydrate();showToast(lang==='de'?'Account verbunden.':'Account connected.')}catch(err){msg.textContent=err.code==='email_exists'?(lang==='de'?'Diese E-Mail ist bereits registriert.':'This email is already registered.'):(lang==='de'?'E-Mail oder Passwort ist nicht korrekt.':'Email or password is incorrect.');msg.classList.add('error')}
+  }
+
+  async function logoutAccount(){try{await API.logout();currentUser=null;closeFunctional();await hydrate();showToast(lang==='de'?'Abgemeldet. Demo-Modus ist aktiv.':'Logged out. Demo mode is active.')}catch(err){notifyError(err)}}
+
+  function renderNotifications(){const list=$('#notificationPanel .notification-list');if(!list)return;if(!serverNotifications.length){list.innerHTML=`<div class="provider-empty">${lang==='de'?'Keine neuen Benachrichtigungen.':'No notifications.'}</div>`;return}list.innerHTML=serverNotifications.map(n=>`<button data-notification-id="${n.id}"><span class="activity-icon ${n.read?'':'purple'}">${n.read?'✓':'•'}</span><p><strong>${escapeHTML(n.title?.[lang]||'')}</strong><small>${escapeHTML(n.text?.[lang]||'')}</small></p></button>`).join('');const unread=serverNotifications.filter(n=>!n.read).length;const badge=$('.notification-badge');if(badge){badge.textContent=unread;badge.style.display=unread?'grid':'none'}}
+
+  function renderProviderMetrics(){if(!providerData?.metrics)return;const cards=$$('.provider-metrics article');const m=providerData.metrics;if(cards[0])cards[0].querySelector('strong').textContent=`€${Math.round(m.revenue||0).toLocaleString(lang==='de'?'de-DE':'en-US')}`;if(cards[1])cards[1].querySelector('strong').textContent=m.bookings??0;if(cards[2])cards[2].querySelector('strong').textContent=(m.profile_views??0).toLocaleString();if(cards[3])cards[3].querySelector('strong').textContent=`${providerData.profile?.response_minutes||30} Min.`}
 
   const originalToggleFavorite=toggleFavorite;
-  toggleFavorite=async function(id){
-    const shouldAdd=!favorites.has(id);
-    originalToggleFavorite(id);
-    try{await API.favorite(id,shouldAdd)}catch(err){originalToggleFavorite(id);notifyError(err)}
-  };
+  toggleFavorite=async function(id){const add=!favorites.has(id);originalToggleFavorite(id);try{await API.favorite(id,add)}catch(err){originalToggleFavorite(id);notifyError(err)}};
 
-  const originalConfirm=confirmDemoBooking;
-  confirmDemoBooking=async function(){
-    const city=$('#buildCity')?.value||'Berlin';
-    const dateValue=document.querySelector('#buildDate')?.value||document.querySelector('.builder-fields input[type=date]')?.value;
-    let startAt=null;
-    if(dateValue){const d=new Date(`${dateValue}T20:00:00`);if(!Number.isNaN(d.getTime()))startAt=d.toISOString()}
-    const payload={
-      title:lang==='de'?'Neue Audora Session':'New Audora Session',goal:builderGoal||'record',city,
-      genres:[...selectedGenres],budget:Number($('#budgetRange')?.value||1000),duration_hours:3,start_at:startAt,status:'confirmed'
-    };
-    try{
-      const created=await API.createSession(payload);
-      sessions.unshift(appSession(created));
-      showToast(t('toast.booked'));go('sessions');activeSessionFilter='upcoming';syncSessionTabs();renderSessions();
-    }catch(err){notifyError(err)}
-  };
+  confirmDemoBooking=async function(){const city=$('#buildCity')?.value||'Berlin';const dateValue=$('#buildDate')?.value||$('.builder-fields input[type=date]')?.value;let startAt=null;if(dateValue){const d=new Date(`${dateValue}T20:00:00`);if(!Number.isNaN(d.getTime()))startAt=d.toISOString()}const payload={title:lang==='de'?'Neue Audora Session':'New Audora Session',goal:builderGoal||'record',city,genres:[...selectedGenres],budget:Number($('#budgetRange')?.value||1000),duration_hours:3,start_at:startAt,status:'confirmed'};const next=$('#builderNext');if(next)next.disabled=true;try{const created=await API.createSession(payload);sessions.unshift(appSession(created));showToast(t('toast.booked'));go('sessions');activeSessionFilter='upcoming';syncSessionTabs();renderSessions()}catch(err){notifyError(err)}finally{if(next)next.disabled=false}};
 
-  messageListing=async function(id){
-    try{
-      const c=await API.conversationForListing(id);
-      let existing=conversations.find(x=>x.id===c.id);
-      if(!existing){existing=appConversation(c);conversations.unshift(existing)}
-      activeChat=c.id;go('inbox');renderConversations();renderChat();
-      if($('#chatPanel'))$('#chatPanel').classList.add('mobile-open');
-    }catch(err){notifyError(err)}
-  };
+  messageListing=async function(id){try{const c=await API.conversationForListing(id);let existing=conversations.find(x=>x.id===c.id);if(!existing){existing=appConversation(c);conversations.unshift(existing)}activeChat=c.id;go('inbox');renderConversations();renderChat();if($('#chatPanel'))$('#chatPanel').classList.add('mobile-open')}catch(err){notifyError(err)}};
+  sendMessage=async function(text){const value=(text||'').trim();if(!value)return;const chat=conversations.find(c=>c.id===activeChat);if(!chat)return notifyError(new Error('conversation_not_found'));const optimistic={me:true,de:value,en:value,time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})};chat.messages.push(optimistic);chat.preview={de:value,en:value};renderConversations();renderChat();try{const saved=await API.message(activeChat,value);optimistic.time=formatTime(saved.time);showToast(t('toast.message'))}catch(err){chat.messages=chat.messages.filter(x=>x!==optimistic);renderChat();notifyError(err)}};
 
-  sendMessage=async function(text,target='main'){
-    const value=(text||'').trim();if(!value)return;
-    const chat=conversations.find(c=>c.id===activeChat);
-    if(!chat){notifyError(new Error('conversation_not_found'));return}
-    const optimistic={me:true,de:value,en:value,time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})};
-    chat.messages.push(optimistic);chat.preview={de:value,en:value};renderConversations();renderChat();
-    try{
-      const saved=await API.message(activeChat,value);
-      optimistic.time=formatTime(saved.time);showToast(t('toast.message'));
-    }catch(err){chat.messages=chat.messages.filter(x=>x!==optimistic);renderChat();notifyError(err)}
-  };
+  toggleProvider=async function(){const next=!providerMode;providerMode=next;syncProviderUI();try{providerData=await API.provider(next);showToast(t(next?'toast.providerOn':'toast.providerOff'));renderProviderMetrics()}catch(err){providerMode=!next;syncProviderUI();notifyError(err)}};
 
-  const originalToggleProvider=toggleProvider;
-  toggleProvider=async function(){
-    providerMode=!providerMode;syncProviderUI();
-    try{await API.provider(providerMode);showToast(t(providerMode?'toast.providerOn':'toast.providerOff'))}catch(err){providerMode=!providerMode;syncProviderUI();notifyError(err)}
-  };
+  const originalOpenListing=openListing;
+  openListing=async function(id){originalOpenListing(id);const detail=$('#listingDetail');if(!detail)return;let reviews;try{reviews=await API.reviews(id);listingReviews.set(id,reviews)}catch(_e){reviews={rating:0,count:0,results:[]}}const section=document.createElement('section');section.className='detail-content';section.style.display='block';section.innerHTML=`<h3>${lang==='de'?'Bewertungen':'Reviews'}</h3><div class="review-summary"><strong class="review-score">${Number(reviews.rating||0).toFixed(1)}</strong><div><div class="review-stars">★★★★★</div><small>${reviews.count||0} ${lang==='de'?'Bewertungen':'reviews'}</small></div></div><div class="review-list">${(reviews.results||[]).slice(0,5).map(r=>`<article class="review-item"><header><strong>${escapeHTML(r.name)}</strong><span>${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</span></header><p>${escapeHTML(r.comment||'')}</p></article>`).join('')||`<div class="provider-empty">${lang==='de'?'Noch keine Bewertungen.':'No reviews yet.'}</div>`}</div><form class="review-compose" data-review-form="${id}"><select name="rating"><option value="5">5 ★</option><option value="4">4 ★</option><option value="3">3 ★</option><option value="2">2 ★</option><option value="1">1 ★</option></select><input name="comment" placeholder="${lang==='de'?'Deine Erfahrung…':'Your experience…'}"><button class="primary-btn" type="submit">${lang==='de'?'Senden':'Send'}</button></form>`;detail.appendChild(section)};
 
   const originalOpenSessionRoom=openSessionRoom;
-  openSessionRoom=async function(id){
-    const session=sessions.find(x=>x.id===id);
-    if(!session?.server){originalOpenSessionRoom(id);return}
-    const room=$('#sessionRoom');room.dataset.session=id;room.classList.add('open');room.setAttribute('aria-hidden','false');roomTab='overview';syncRoomTabs();
-    try{currentServerSession=await API.session(id);renderSessionRoom(currentServerSession)}catch(err){closeSessionRoom();notifyError(err)}
-  };
+  openSessionRoom=async function(id){const session=sessions.find(x=>x.id===id);if(!session?.server){originalOpenSessionRoom(id);return}const room=$('#sessionRoom');room.dataset.session=id;room.classList.add('open');room.setAttribute('aria-hidden','false');roomTab='overview';syncRoomTabs();try{currentServerSession=await API.session(id);renderSessionRoom(currentServerSession)}catch(err){closeSessionRoom();notifyError(err)}};
 
-  renderSessionRoom=function(sessionArg){
-    const box=$('#roomContent');if(!box)return;
-    const s=sessionArg||currentServerSession;if(!s)return;
-    currentServerSession=s;
-    const team=[...(s.studio?[s.studio]:[]),...(s.team||[])];
-    if(roomTab==='overview'){
-      box.innerHTML=`<small>${t('room.overview')}</small><h3>${escapeHTML(s.title)}</h3><div class="room-overview-grid"><div class="room-info-card"><small>${t('room.next')}</small><strong>${escapeHTML(localizedDate(s.date)[lang])}</strong></div><div class="room-info-card"><small>${t('room.location')}</small><strong>${escapeHTML(s.place||s.city)}</strong></div><div class="room-info-card"><small>${t('room.team')}</small><strong>${team.length} ${lang==='de'?'Partner':'partners'}</strong></div><div class="room-info-card"><small>${t('room.total')}</small><strong>€${Number(s.total||0).toFixed(0)}</strong></div></div><h3 style="margin-top:18px">${t('room.tasks')}</h3><div class="task-list">${(s.tasks||[]).map(task=>`<div class="task-row"><button class="task-check ${task.done?'done':''}" data-server-task="${task.id}">${task.done?'✓':''}</button><span><strong>${escapeHTML(task.title)}</strong><small>${escapeHTML(task.assignee||'')}</small></span><small>${escapeHTML(task.due||'')}</small></div>`).join('')}</div>`;
-    }else if(roomTab==='files'){
-      box.innerHTML=`<small>${t('room.files')}</small><h3>${t('room.filesTitle')}</h3><div class="file-list">${(s.files||[]).map(f=>`<div class="file-row"><span>F</span><span><strong>${escapeHTML(f.name)}</strong><small>${Math.max(1,Math.round((f.size||0)/1024))} KB</small></span><a class="secondary-btn" href="${f.url}" target="_blank" rel="noopener">↓</a></div>`).join('')||`<div class="empty-state" style="min-height:160px"><p>${lang==='de'?'Noch keine Dateien hochgeladen.':'No files uploaded yet.'}</p></div>`}</div><label class="primary-btn" style="margin-top:12px;cursor:pointer">＋ ${lang==='de'?'Datei hochladen':'Upload file'}<input type="file" data-session-upload="${s.id}" hidden></label>`;
-    }else if(roomTab==='team'){
-      box.innerHTML=`<small>${t('room.team')}</small><h3>${t('room.teamTitle')}</h3><div class="room-team-list">${team.map(x=>`<div class="room-team-row"><img src="${x.image}" alt="${escapeHTML(x.name)}"><span><small>${escapeHTML(x.category)}</small><strong>${escapeHTML(x.name)}</strong></span><button class="secondary-btn" data-message-listing="${x.id}">${t('common.message')}</button></div>`).join('')}</div>`;
-    }else{
-      box.innerHTML=`<small>${t('room.chat')}</small><h3>${t('room.chatTitle')}</h3><div class="empty-state" style="min-height:220px"><span>↗</span><h2>${lang==='de'?'Team-Chat':'Team chat'}</h2><p>${lang==='de'?'Öffne einen Teamkontakt im Inbox-Bereich. Alle Nachrichten werden serverseitig gespeichert.':'Open a team contact in Inbox. All messages are stored on the server.'}</p><button class="primary-btn" data-route="inbox">${lang==='de'?'Inbox öffnen':'Open inbox'}</button></div>`;
-    }
-  };
+  renderSessionRoom=function(sessionArg){const box=$('#roomContent');if(!box)return;const s=sessionArg||currentServerSession;if(!s)return;currentServerSession=s;const team=[...(s.studio?[s.studio]:[]),...(s.team||[])];if(roomTab==='overview'){box.innerHTML=`<small>${t('room.overview')}</small><h3>${escapeHTML(s.title)}</h3><div class="room-overview-grid"><div class="room-info-card"><small>${t('room.next')}</small><strong>${escapeHTML(localizedDate(s.date)[lang])}</strong></div><div class="room-info-card"><small>${t('room.location')}</small><strong>${escapeHTML(s.place||s.city)}</strong></div><div class="room-info-card"><small>${t('room.team')}</small><strong>${team.length} ${lang==='de'?'Partner':'partners'}</strong></div><div class="room-info-card"><small>${t('room.total')}</small><strong>€${Number(s.total||0).toFixed(0)}</strong></div></div><h3 style="margin-top:18px">${t('room.tasks')}</h3><div class="task-list">${(s.tasks||[]).map(task=>`<div class="task-row"><button class="task-check ${task.done?'done':''}" data-server-task="${task.id}">${task.done?'✓':''}</button><span><strong>${escapeHTML(task.title)}</strong><small>${escapeHTML(task.assignee||'')}</small></span><small>${escapeHTML(task.due||'')}</small></div>`).join('')}</div>${s.status!=='cancelled'&&s.status!=='completed'?`<button class="ghost-btn full" data-session-cancel="${s.id}" style="color:#ff9aac">${lang==='de'?'Session stornieren':'Cancel session'}</button>`:''}`}else if(roomTab==='files'){box.innerHTML=`<small>${t('room.files')}</small><h3>${t('room.filesTitle')}</h3><div class="file-list">${(s.files||[]).map(f=>`<div class="file-row"><span>F</span><span><strong>${escapeHTML(f.name)}</strong><small>${Math.max(1,Math.round((f.size||0)/1024))} KB</small></span><a class="secondary-btn" href="${f.url}" target="_blank" rel="noopener">↓</a></div>`).join('')||`<div class="provider-empty">${lang==='de'?'Noch keine Dateien hochgeladen.':'No files uploaded yet.'}</div>`}</div><label class="primary-btn" style="margin-top:12px;cursor:pointer">＋ ${lang==='de'?'Datei hochladen':'Upload file'}<input type="file" data-session-upload="${s.id}" hidden></label>`}else if(roomTab==='team'){box.innerHTML=`<small>${t('room.team')}</small><h3>${t('room.teamTitle')}</h3><div class="room-team-list">${team.map(x=>`<div class="room-team-row"><img src="${x.image}" alt="${escapeHTML(x.name)}"><span><small>${escapeHTML(x.category)}</small><strong>${escapeHTML(x.name)}</strong></span><button class="secondary-btn" data-message-listing="${x.id}">${t('common.message')}</button></div>`).join('')}</div>`}else{box.innerHTML=`<small>${t('room.chat')}</small><h3>${t('room.chatTitle')}</h3><div class="empty-state" style="min-height:220px"><span>↗</span><h2>${lang==='de'?'Team-Chat':'Team chat'}</h2><p>${lang==='de'?'Öffne einen Teamkontakt in der Inbox. Nachrichten werden serverseitig gespeichert.':'Open a team contact in Inbox. Messages are persisted on the server.'}</p><button class="primary-btn" data-route="inbox">${lang==='de'?'Inbox öffnen':'Open inbox'}</button></div>`}};
+
+  async function openProviderListings(){try{const data=await API.providerListings();const rows=data.results||[];openFunctional(`<h2>${lang==='de'?'Deine Angebote':'Your listings'}</h2><p>${lang==='de'?'Erstelle und verwalte Studios oder Creative Services direkt im Marketplace.':'Create and manage studios or creative services directly in the marketplace.'}</p><div class="provider-toolbar"><span>${rows.length} ${lang==='de'?'aktive/gespeicherte Angebote':'saved listings'}</span><button class="primary-btn" data-provider-new>＋ ${lang==='de'?'Neues Angebot':'New listing'}</button></div><div class="provider-listing-list">${rows.map(x=>providerListingRow(x)).join('')||`<div class="provider-empty">${lang==='de'?'Noch kein eigenes Angebot.':'No listing yet.'}</div>`}</div>`,true)}catch(err){notifyError(err)}}
+  function providerListingRow(x){return `<div class="provider-listing-row"><img src="${x.image||''}" alt=""><span><strong>${escapeHTML(x.name)}</strong><small>${escapeHTML(x.category)} · ${escapeHTML(x.city)} · €${Number(x.price).toFixed(0)}</small></span><div class="row-actions"><button data-provider-availability="${x.id}">${lang==='de'?'Kalender':'Calendar'}</button><button data-provider-edit="${x.id}">${lang==='de'?'Bearbeiten':'Edit'}</button><button data-provider-delete="${x.id}">×</button></div></div>`}
+  function openListingEditor(existing=null){openFunctional(`<h2>${existing?(lang==='de'?'Angebot bearbeiten':'Edit listing'):(lang==='de'?'Angebot erstellen':'Create listing')}</h2><p>${lang==='de'?'Diese Daten erscheinen direkt im Audora Marketplace.':'This information appears directly in the Audora marketplace.'}</p><form class="functional-form" id="providerListingForm" data-id="${existing?.id||''}"><div class="form-grid"><label><span>${lang==='de'?'NAME':'NAME'}</span><input name="name" required value="${escapeHTML(existing?.name||'')}"></label><label><span>${lang==='de'?'TYP':'TYPE'}</span><select name="category"><option value="studio">Studio</option><option value="producer">Producer</option><option value="engineer">Engineer</option><option value="songwriter">Songwriter</option></select></label><label><span>${lang==='de'?'STADT':'CITY'}</span><input name="city" value="${escapeHTML(existing?.city||'Berlin')}"></label><label><span>${lang==='de'?'PREIS €':'PRICE €'}</span><input name="price" type="number" min="0" step="1" value="${existing?.price||''}" required></label></div><label><span>IMAGE URL</span><input name="image" type="url" value="${escapeHTML(existing?.image||'')}"></label><label><span>${lang==='de'?'GENRES (mit Komma)':'GENRES (comma separated)'}</span><input name="genres" value="${escapeHTML((existing?.genres||[]).join(', '))}"></label><label><span>${lang==='de'?'BESCHREIBUNG DE':'DESCRIPTION DE'}</span><textarea name="about_de">${escapeHTML(existing?.about?.de||'')}</textarea></label><label><span>DESCRIPTION EN</span><textarea name="about_en">${escapeHTML(existing?.about?.en||'')}</textarea></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input style="width:auto" type="checkbox" name="instant" ${existing?.instant?'checked':''}><span>${lang==='de'?'Sofort buchbar':'Instant booking'}</span></label><div class="functional-message" id="providerFormMessage"></div><button class="primary-btn" type="submit">${lang==='de'?'Speichern':'Save'}</button></form>`);if(existing)$(`#providerListingForm select[name=category]`).value=existing.category}
+  async function submitProviderListing(form){const fd=new FormData(form);const payload={name:fd.get('name'),category:fd.get('category'),city:fd.get('city'),price:Number(fd.get('price')),image:fd.get('image'),genres:String(fd.get('genres')||'').split(',').map(x=>x.trim()).filter(Boolean),about_de:fd.get('about_de'),about_en:fd.get('about_en'),instant:fd.get('instant')==='on'};const id=form.dataset.id;try{if(id)await API.updateProviderListing(id,payload);else await API.createProviderListing(payload);closeFunctional();await refreshListings();providerData=await API.providerDashboard();renderProviderMetrics();showToast(lang==='de'?'Angebot gespeichert.':'Listing saved.');openProviderListings()}catch(err){const m=$('#providerFormMessage');if(m){m.textContent=lang==='de'?'Bitte prüfe die Eingaben.':'Please check your input.';m.classList.add('error')}else notifyError(err)}}
+  async function refreshListings(){const data=await API.listings();if(data.results)listings.splice(0,listings.length,...data.results);renderHome();renderDiscover();renderSaved()}
+
+  async function openAvailability(id){try{const [all,data]=await Promise.all([API.providerListings(),API.availability(id)]);const listing=all.results.find(x=>x.id===id);openFunctional(`<h2>${lang==='de'?'Verfügbarkeit':'Availability'}</h2><p>${escapeHTML(listing?.name||id)} — ${lang==='de'?'Freie oder blockierte Zeitfenster definieren. Bestehende Buchungen werden automatisch berücksichtigt.':'Define open or blocked time windows. Existing bookings are automatically respected.'}</p><form class="functional-form" id="availabilityForm" data-listing="${id}"><div class="form-grid"><label><span>${lang==='de'?'VON':'FROM'}</span><input name="start" type="datetime-local" required></label><label><span>${lang==='de'?'BIS':'TO'}</span><input name="end" type="datetime-local" required></label></div><label><span>${lang==='de'?'STATUS':'STATUS'}</span><select name="available"><option value="true">${lang==='de'?'Verfügbar':'Available'}</option><option value="false">${lang==='de'?'Blockiert':'Blocked'}</option></select></label><button class="primary-btn" type="submit">＋ ${lang==='de'?'Zeitfenster hinzufügen':'Add time slot'}</button></form><div class="availability-list">${(data.slots||[]).map(s=>`<div class="availability-row"><span><strong>${formatDateTime(s.start)} → ${formatDateTime(s.end)}</strong><small>${escapeHTML(s.note||'')}</small></span><div class="row-actions"><span class="slot-state ${s.available?'':'blocked'}">${s.available?(lang==='de'?'Frei':'Open'):(lang==='de'?'Blockiert':'Blocked')}</span><button data-slot-delete="${s.id}" data-listing="${id}">×</button></div></div>`).join('')||`<div class="provider-empty">${lang==='de'?'Noch keine eigenen Zeitfenster. Ohne Einträge gilt der Kalender grundsätzlich als verfügbar, solange keine Buchung kollidiert.':'No custom slots yet. Without slots the calendar is considered available unless a booking conflicts.'}</div>`}</div>`,true)}catch(err){notifyError(err)}}
+  async function submitAvailability(form){const fd=new FormData(form);const start=new Date(fd.get('start')),end=new Date(fd.get('end'));try{await API.createAvailability(form.dataset.listing,{start:start.toISOString(),end:end.toISOString(),available:fd.get('available')==='true'});showToast(lang==='de'?'Kalender aktualisiert.':'Calendar updated.');openAvailability(form.dataset.listing)}catch(err){notifyError(err)}}
 
   document.addEventListener('click',async e=>{
-    const task=e.target.closest('[data-server-task]');
-    if(task){e.preventDefault();e.stopImmediatePropagation();const next=!task.classList.contains('done');task.classList.toggle('done',next);task.textContent=next?'✓':'';try{await API.task(task.dataset.serverTask,next)}catch(err){task.classList.toggle('done',!next);task.textContent=!next?'✓':'';notifyError(err)}return}
-    const notif=e.target.closest('[data-notification-id]');
-    if(notif){try{await API.readNotifications();serverNotifications.forEach(n=>n.read=true);renderNotifications()}catch(err){notifyError(err)}}
+    const close=e.target.closest('[data-functional-close]');if(close){closeFunctional();return}
+    const authTab=e.target.closest('[data-auth-tab]');if(authTab){$$('[data-auth-tab]','#functionalBody').forEach(x=>x.classList.toggle('active',x===authTab));const reg=authTab.dataset.authTab==='register';$('.auth-name').style.display=reg?'grid':'none';$('#authForm input[name=password]').autocomplete=reg?'new-password':'current-password';$('#authForm button[type=submit]').textContent=reg?(lang==='de'?'Account erstellen':'Create account'):(lang==='de'?'Anmelden':'Log in');return}
+    if(e.target.closest('[data-auth-logout]')){await logoutAccount();return}
+    const task=e.target.closest('[data-server-task]');if(task){e.preventDefault();e.stopImmediatePropagation();const next=!task.classList.contains('done');task.classList.toggle('done',next);task.textContent=next?'✓':'';try{await API.task(task.dataset.serverTask,next)}catch(err){task.classList.toggle('done',!next);task.textContent=!next?'✓':'';notifyError(err)}return}
+    const notif=e.target.closest('[data-notification-id]');if(notif){try{await API.readNotifications();serverNotifications.forEach(n=>n.read=true);renderNotifications()}catch(err){notifyError(err)}return}
+    const providerNew=e.target.closest('[data-provider-new]');if(providerNew){openListingEditor();return}
+    const providerEdit=e.target.closest('[data-provider-edit]');if(providerEdit){try{const data=await API.providerListings();openListingEditor(data.results.find(x=>x.id===providerEdit.dataset.providerEdit))}catch(err){notifyError(err)}return}
+    const providerDelete=e.target.closest('[data-provider-delete]');if(providerDelete){if(confirm(lang==='de'?'Angebot wirklich deaktivieren?':'Disable this listing?')){try{await API.deleteProviderListing(providerDelete.dataset.providerDelete);await refreshListings();openProviderListings()}catch(err){notifyError(err)}}return}
+    const providerAvailability=e.target.closest('[data-provider-availability]');if(providerAvailability){openAvailability(providerAvailability.dataset.providerAvailability);return}
+    const slotDelete=e.target.closest('[data-slot-delete]');if(slotDelete){try{await API.deleteAvailability(slotDelete.dataset.slotDelete);openAvailability(slotDelete.dataset.listing)}catch(err){notifyError(err)}return}
+    const cancel=e.target.closest('[data-session-cancel]');if(cancel){if(!confirm(lang==='de'?'Session wirklich stornieren?':'Cancel this session?'))return;try{currentServerSession=await API.sessionPatch(cancel.dataset.sessionCancel,{status:'cancelled'});const local=sessions.find(x=>x.id===cancel.dataset.sessionCancel);if(local){local.status='cancelled';local.state='past'}renderSessionRoom(currentServerSession);renderSessions();showToast(lang==='de'?'Session storniert.':'Session cancelled.')}catch(err){notifyError(err)}return}
+    const demo=e.target.closest('[data-demo-action]');if(demo){if(demo.dataset.demoAction==='listing'){e.preventDefault();e.stopImmediatePropagation();openProviderListings();return}if(demo.dataset.demoAction==='calendar'){e.preventDefault();e.stopImmediatePropagation();try{const data=await API.providerListings();if(data.results[0])openAvailability(data.results[0].id);else openProviderListings()}catch(err){notifyError(err)}return}}
   },true);
 
-  document.addEventListener('change',async e=>{
-    const input=e.target.closest('[data-session-upload]');if(!input||!input.files?.[0])return;
-    input.disabled=true;
-    try{await API.upload(input.dataset.sessionUpload,input.files[0]);currentServerSession=await API.session(input.dataset.sessionUpload);renderSessionRoom(currentServerSession);showToast(lang==='de'?'Datei hochgeladen.':'File uploaded.')}catch(err){notifyError(err)}finally{input.disabled=false}
-  });
+  document.addEventListener('submit',async e=>{
+    if(e.target.id==='authForm'){e.preventDefault();await submitAuth(e.target);return}
+    if(e.target.id==='providerListingForm'){e.preventDefault();await submitProviderListing(e.target);return}
+    if(e.target.id==='availabilityForm'){e.preventDefault();await submitAvailability(e.target);return}
+    const review=e.target.closest('[data-review-form]');if(review){e.preventDefault();const fd=new FormData(review);try{await API.review(review.dataset.reviewForm,{rating:Number(fd.get('rating')),comment:fd.get('comment')});showToast(lang==='de'?'Bewertung gespeichert.':'Review saved.');openListing(review.dataset.reviewForm)}catch(err){notifyError(err)}return}
+  },true);
+
+  document.addEventListener('change',async e=>{const input=e.target.closest('[data-session-upload]');if(!input||!input.files?.[0])return;input.disabled=true;try{await API.upload(input.dataset.sessionUpload,input.files[0]);currentServerSession=await API.session(input.dataset.sessionUpload);renderSessionRoom(currentServerSession);showToast(lang==='de'?'Datei hochgeladen.':'File uploaded.')}catch(err){notifyError(err)}finally{input.disabled=false}});
 
   const originalRunAI=runAI;
-  runAI=async function(action){
-    if(action!=='build'){originalRunAI(action);return}
-    closeAllPanels();builderGoal='record';selectedGenres=new Set(['Hip-Hop']);syncGoalCards();go('build');setBuilderStep(2);updateBuilderSummary();
-    try{
-      const match=await API.match({goal:builderGoal,city:$('#buildCity')?.value||'Berlin',genres:[...selectedGenres],budget:Number($('#budgetRange')?.value||1000)});
-      if(match?.total)$('#summaryTotal').textContent=`€${Math.round(match.total)}`;
-      showToast(t('toast.ai'));
-    }catch(err){notifyError(err)}
-  };
+  runAI=async function(action){if(action!=='build'){originalRunAI(action);return}closeAllPanels();builderGoal='record';selectedGenres=new Set(['Hip-Hop']);syncGoalCards();go('build');setBuilderStep(2);updateBuilderSummary();try{const match=await API.match({goal:builderGoal,city:$('#buildCity')?.value||'Berlin',genres:[...selectedGenres],budget:Number($('#budgetRange')?.value||1000)});if(match?.total)$('#summaryTotal').textContent=`€${Math.round(match.total)}`;showToast(t('toast.ai'))}catch(err){notifyError(err)}};
 
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(hydrate,0));
+  const oldApplyLanguage=applyLanguage;
+  applyLanguage=function(){oldApplyLanguage();renderAccountStatus();renderNotifications();renderProviderMetrics()};
+
+  document.addEventListener('DOMContentLoaded',()=>{ensureFunctionalModal();setTimeout(hydrate,0);$('#functionalModal')?.addEventListener('click',e=>{if(e.target.id==='functionalModal')closeFunctional()})});
 })();
