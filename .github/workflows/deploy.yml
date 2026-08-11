@@ -9,7 +9,10 @@ on:
       - 'mobile-polish.css'
       - 'typography.css'
       - 'app.js'
+      - 'api.js'
       - 'i18n.js'
+      - 'requirements.txt'
+      - 'backend/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
@@ -34,33 +37,23 @@ jobs:
           test -n "$DEPLOY_HOST" || (echo 'HOST secret is missing' && exit 1)
           test -n "$DEPLOY_PASS" || (echo 'PASS secret is missing' && exit 1)
 
-      - name: Install SSH client helper
+      - name: Install SSH helper
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq sshpass
 
-      - name: Resolve SSH target and authentication
+      - name: Resolve SSH target
         shell: bash
         run: |
           set -euo pipefail
-
           SSH_HOST="$DEPLOY_HOST"
           SSH_PORT="22"
           HOST_USER=""
-
-          if [[ "$SSH_HOST" == *"@"* ]]; then
-            HOST_USER="${SSH_HOST%@*}"
-            SSH_HOST="${SSH_HOST#*@}"
-          fi
-
+          if [[ "$SSH_HOST" == *"@"* ]]; then HOST_USER="${SSH_HOST%@*}"; SSH_HOST="${SSH_HOST#*@}"; fi
           if [[ "$SSH_HOST" == *":"* ]]; then
             MAYBE_PORT="${SSH_HOST##*:}"
-            if [[ "$MAYBE_PORT" =~ ^[0-9]+$ ]]; then
-              SSH_PORT="$MAYBE_PORT"
-              SSH_HOST="${SSH_HOST%:*}"
-            fi
+            if [[ "$MAYBE_PORT" =~ ^[0-9]+$ ]]; then SSH_PORT="$MAYBE_PORT"; SSH_HOST="${SSH_HOST%:*}"; fi
           fi
-
           if [[ "$DEPLOY_PASS" == *"BEGIN "*"PRIVATE KEY"* ]]; then
             printf '%s\n' "$DEPLOY_PASS" > /tmp/audora_ssh_key
             chmod 600 /tmp/audora_ssh_key
@@ -69,167 +62,207 @@ jobs:
             export SSHPASS="$DEPLOY_PASS"
             SSH_AUTH="password"
           fi
-
           CANDIDATES=()
-          if [[ -n "${DEPLOY_USER:-}" ]]; then CANDIDATES+=("$DEPLOY_USER"); fi
-          if [[ -n "$HOST_USER" ]]; then CANDIDATES+=("$HOST_USER"); fi
+          [[ -n "${DEPLOY_USER:-}" ]] && CANDIDATES+=("$DEPLOY_USER")
+          [[ -n "$HOST_USER" ]] && CANDIDATES+=("$HOST_USER")
           CANDIDATES+=(root ubuntu debian admin deploy centos ec2-user)
-
           declare -A SEEN=()
           for USERNAME in "${CANDIDATES[@]}"; do
             [[ -n "$USERNAME" ]] || continue
             [[ -z "${SEEN[$USERNAME]:-}" ]] || continue
             SEEN[$USERNAME]=1
-
-            if [[ "$SSH_AUTH" == "key" ]]; then
-              if ssh -i /tmp/audora_ssh_key -p "$SSH_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o BatchMode=yes "$USERNAME@$SSH_HOST" 'printf ok' >/dev/null 2>&1; then
-                echo "SSH user resolved: $USERNAME"
-                echo "SSH_TARGET=$USERNAME@$SSH_HOST" >> "$GITHUB_ENV"
-                echo "SSH_PORT=$SSH_PORT" >> "$GITHUB_ENV"
-                echo "SSH_AUTH=$SSH_AUTH" >> "$GITHUB_ENV"
-                exit 0
+            if [[ "$SSH_AUTH" == key ]]; then
+              if ssh -i /tmp/audora_ssh_key -p "$SSH_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o BatchMode=yes "$USERNAME@$SSH_HOST" true >/dev/null 2>&1; then
+                echo "SSH_TARGET=$USERNAME@$SSH_HOST" >> "$GITHUB_ENV"; echo "SSH_PORT=$SSH_PORT" >> "$GITHUB_ENV"; echo "SSH_AUTH=key" >> "$GITHUB_ENV"; exit 0
               fi
             else
-              if sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o PreferredAuthentications=keyboard-interactive,password -o PubkeyAuthentication=no "$USERNAME@$SSH_HOST" 'printf ok' >/dev/null 2>&1; then
-                echo "SSH user resolved: $USERNAME"
-                echo "SSH_TARGET=$USERNAME@$SSH_HOST" >> "$GITHUB_ENV"
-                echo "SSH_PORT=$SSH_PORT" >> "$GITHUB_ENV"
-                echo "SSH_AUTH=$SSH_AUTH" >> "$GITHUB_ENV"
-                exit 0
+              if sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o PreferredAuthentications=keyboard-interactive,password -o PubkeyAuthentication=no "$USERNAME@$SSH_HOST" true >/dev/null 2>&1; then
+                echo "SSH_TARGET=$USERNAME@$SSH_HOST" >> "$GITHUB_ENV"; echo "SSH_PORT=$SSH_PORT" >> "$GITHUB_ENV"; echo "SSH_AUTH=password" >> "$GITHUB_ENV"; exit 0
               fi
             fi
           done
-
-          echo 'SSH authentication failed with the supplied HOST/PASS credentials.'
-          echo "HOST includes username: $([[ -n "$HOST_USER" ]] && echo yes || echo no)"
-          echo "SSH_USER secret present: $([[ -n "${DEPLOY_USER:-}" ]] && echo yes || echo no)"
-          echo "PASS detected as: $SSH_AUTH"
+          echo 'SSH authentication failed.'
           exit 1
 
-      - name: Prepare SSH command
+      - name: Prepare release
         shell: bash
         run: |
-          if [[ "$SSH_AUTH" == "key" ]]; then
-            echo 'SSH_BASE=ssh -i /tmp/audora_ssh_key' >> "$GITHUB_ENV"
-            echo 'SCP_BASE=scp -i /tmp/audora_ssh_key' >> "$GITHUB_ENV"
-          else
-            echo 'SSH_BASE=sshpass -e ssh' >> "$GITHUB_ENV"
-            echo 'SCP_BASE=sshpass -e scp' >> "$GITHUB_ENV"
-          fi
+          set -euo pipefail
+          tar -czf /tmp/audora-release.tgz index.html styles.css mobile-polish.css typography.css app.js api.js i18n.js requirements.txt backend
 
-      - name: Prepare server and Nginx
+      - name: Upload and install full stack
         shell: bash
         run: |
           set -euo pipefail
           export SSHPASS="$DEPLOY_PASS"
+          if [[ "$SSH_AUTH" == key ]]; then
+            SCP="scp -i /tmp/audora_ssh_key"
+            SSH="ssh -i /tmp/audora_ssh_key"
+          else
+            SCP="sshpass -e scp"
+            SSH="sshpass -e ssh"
+          fi
+          $SCP -P "$SSH_PORT" -o StrictHostKeyChecking=no /tmp/audora-release.tgz "$SSH_TARGET:/tmp/audora-release.tgz"
           REMOTE_SHELL="bash -s"
           if [[ "$SSH_TARGET" != root@* ]]; then REMOTE_SHELL="sudo -n bash -s"; fi
-          $SSH_BASE -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
+          $SSH -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
           set -euo pipefail
-
+          export DEBIAN_FRONTEND=noninteractive
           DOMAIN="audora.smarbiz.sbs"
+          APP_ROOT="/opt/audora/app"
+          VENV="/opt/audora/venv"
           WEBROOT="/var/www/audora"
+          ENVFILE="/etc/audora/audora.env"
 
-          if ! command -v nginx >/dev/null 2>&1; then
-            apt-get update -qq
-            DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
+          apt-get update -qq
+          apt-get install -y -qq nginx python3 python3-venv postgresql postgresql-contrib certbot python3-certbot-nginx curl openssl
+          systemctl enable --now postgresql >/dev/null 2>&1 || true
+
+          mkdir -p "$APP_ROOT" "$WEBROOT" /etc/audora
+          tar -xzf /tmp/audora-release.tgz -C "$APP_ROOT"
+          rm -f /tmp/audora-release.tgz
+
+          if [[ ! -f "$ENVFILE" ]]; then
+            DB_PASSWORD="$(openssl rand -hex 24)"
+            DJANGO_SECRET="$(openssl rand -hex 48)"
+            cat > "$ENVFILE" <<ENV
+          AUDORA_SECRET_KEY=$DJANGO_SECRET
+          AUDORA_DEBUG=0
+          AUDORA_ALLOWED_HOSTS=audora.smarbiz.sbs,127.0.0.1,localhost
+          AUDORA_DB_NAME=audora
+          AUDORA_DB_USER=audora
+          AUDORA_DB_PASSWORD=$DB_PASSWORD
+          AUDORA_DB_HOST=127.0.0.1
+          AUDORA_DB_PORT=5432
+          ENV
+            chmod 600 "$ENVFILE"
           fi
 
-          mkdir -p "$WEBROOT"
+          set -a
+          source "$ENVFILE"
+          set +a
 
-          cat > /etc/nginx/sites-available/audora.smarbiz.sbs <<'NGINX'
+          if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='audora'" | grep -q 1; then
+            runuser -u postgres -- psql -c "CREATE USER audora WITH PASSWORD '$AUDORA_DB_PASSWORD';"
+          else
+            runuser -u postgres -- psql -c "ALTER USER audora WITH PASSWORD '$AUDORA_DB_PASSWORD';"
+          fi
+          if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='audora'" | grep -q 1; then
+            runuser -u postgres -- createdb -O audora audora
+          fi
+
+          if [[ ! -x "$VENV/bin/python" ]]; then python3 -m venv "$VENV"; fi
+          "$VENV/bin/pip" install -q --upgrade pip
+          "$VENV/bin/pip" install -q -r "$APP_ROOT/requirements.txt"
+
+          cd "$APP_ROOT/backend"
+          "$VENV/bin/python" manage.py makemigrations core --noinput
+          "$VENV/bin/python" manage.py migrate --noinput
+          "$VENV/bin/python" manage.py seed_audora
+          "$VENV/bin/python" manage.py collectstatic --noinput
+          "$VENV/bin/python" manage.py check
+
+          mkdir -p "$APP_ROOT/backend/media"
+          chown -R www-data:www-data "$APP_ROOT/backend/media" "$APP_ROOT/backend/staticfiles"
+
+          cat > /etc/systemd/system/audora.service <<UNIT
+          [Unit]
+          Description=Audora Django API
+          After=network.target postgresql.service
+
+          [Service]
+          Type=simple
+          User=www-data
+          Group=www-data
+          WorkingDirectory=$APP_ROOT/backend
+          EnvironmentFile=$ENVFILE
+          ExecStart=$VENV/bin/gunicorn audora_backend.wsgi:application --bind 127.0.0.1:8008 --workers 3 --timeout 60 --access-logfile - --error-logfile -
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          systemctl daemon-reload
+          systemctl enable --now audora.service
+          systemctl restart audora.service
+
+          rm -rf "$WEBROOT"/*
+          cp "$APP_ROOT/index.html" "$APP_ROOT/styles.css" "$APP_ROOT/mobile-polish.css" "$APP_ROOT/typography.css" "$APP_ROOT/app.js" "$APP_ROOT/api.js" "$APP_ROOT/i18n.js" "$WEBROOT/"
+          printf '\n\n/* ===== responsive polish layer ===== */\n' >> "$WEBROOT/styles.css"
+          cat "$WEBROOT/mobile-polish.css" >> "$WEBROOT/styles.css"
+          printf '\n\n/* ===== global typography layer ===== */\n' >> "$WEBROOT/styles.css"
+          cat "$WEBROOT/typography.css" >> "$WEBROOT/styles.css"
+          if ! grep -q 'src="/api.js"' "$WEBROOT/index.html"; then
+            sed -i 's#</body>#  <script src="/api.js"></script>\n</body>#' "$WEBROOT/index.html"
+          fi
+          chown -R www-data:www-data "$WEBROOT"
+
+          cat > /etc/nginx/sites-available/audora.smarbiz.sbs <<NGINX
           server {
               listen 80;
               listen [::]:80;
               server_name audora.smarbiz.sbs;
-
-              root /var/www/audora;
+              root $WEBROOT;
               index index.html;
+              client_max_body_size 50M;
 
-              location / {
-                  try_files $uri $uri/ /index.html;
+              location /api/ {
+                  proxy_pass http://127.0.0.1:8008;
+                  proxy_set_header Host \$host;
+                  proxy_set_header X-Real-IP \$remote_addr;
+                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto \$scheme;
+                  proxy_http_version 1.1;
               }
+
+              location /admin/ {
+                  proxy_pass http://127.0.0.1:8008;
+                  proxy_set_header Host \$host;
+                  proxy_set_header X-Real-IP \$remote_addr;
+                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto \$scheme;
+              }
+
+              location /static-admin/ { alias $APP_ROOT/backend/staticfiles/; expires 7d; }
+              location /media/ { alias $APP_ROOT/backend/media/; expires 1h; }
 
               location ~* \.(?:css|js)$ {
                   expires -1;
                   add_header Cache-Control "no-cache, no-store, must-revalidate";
-                  try_files $uri =404;
+                  try_files \$uri =404;
               }
 
               location ~* \.(?:jpg|jpeg|gif|png|svg|webp|ico|woff2?)$ {
                   expires 7d;
                   add_header Cache-Control "public, max-age=604800";
-                  try_files $uri =404;
+                  try_files \$uri =404;
               }
+
+              location / { try_files \$uri \$uri/ /index.html; }
           }
           NGINX
 
           ln -sfn /etc/nginx/sites-available/audora.smarbiz.sbs /etc/nginx/sites-enabled/audora.smarbiz.sbs
           nginx -t
-          systemctl enable nginx >/dev/null 2>&1 || true
           systemctl reload nginx || systemctl restart nginx
-          REMOTE
 
-      - name: Upload prototype
-        shell: bash
-        run: |
-          set -euo pipefail
-          export SSHPASS="$DEPLOY_PASS"
-          tar -czf /tmp/audora-site.tgz index.html styles.css mobile-polish.css typography.css app.js i18n.js
-          $SCP_BASE -P "$SSH_PORT" -o StrictHostKeyChecking=no /tmp/audora-site.tgz "$SSH_TARGET":/tmp/audora-site.tgz
-          REMOTE_SHELL="bash -s"
-          if [[ "$SSH_TARGET" != root@* ]]; then REMOTE_SHELL="sudo -n bash -s"; fi
-          $SSH_BASE -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
-          set -euo pipefail
-          rm -rf /var/www/audora/*
-          tar -xzf /tmp/audora-site.tgz -C /var/www/audora
-          rm -f /tmp/audora-site.tgz
-
-          printf '\n\n/* ===== responsive polish layer ===== */\n' >> /var/www/audora/styles.css
-          cat /var/www/audora/mobile-polish.css >> /var/www/audora/styles.css
-          printf '\n\n/* ===== global typography layer ===== */\n' >> /var/www/audora/styles.css
-          cat /var/www/audora/typography.css >> /var/www/audora/styles.css
-
-          chown -R www-data:www-data /var/www/audora
-          find /var/www/audora -type d -exec chmod 755 {} \;
-          find /var/www/audora -type f -exec chmod 644 {} \;
+          certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
           nginx -t
           systemctl reload nginx
-          response="$(curl -fsS -H 'Host: audora.smarbiz.sbs' http://127.0.0.1/)"
-          grep -qi 'Audora' <<< "$response"
-          REMOTE
 
-      - name: Enable HTTPS
-        shell: bash
-        run: |
-          set -euo pipefail
-          export SSHPASS="$DEPLOY_PASS"
-          REMOTE_SHELL="bash -s"
-          if [[ "$SSH_TARGET" != root@* ]]; then REMOTE_SHELL="sudo -n bash -s"; fi
-          $SSH_BASE -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
-          set -euo pipefail
-          DOMAIN="audora.smarbiz.sbs"
-
-          if ! command -v certbot >/dev/null 2>&1; then
-            apt-get update -qq
-            DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
-          fi
-
-          certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
-          nginx -t
-          systemctl reload nginx
-          REMOTE
-
-      - name: Verify live site
-        shell: bash
-        run: |
-          set -euo pipefail
           for i in 1 2 3 4 5 6; do
-            if response="$(curl -fsSL --max-time 15 https://audora.smarbiz.sbs/)" && grep -qi 'Audora' <<< "$response"; then
-              echo 'Audora is live over HTTPS.'
-              exit 0
-            fi
-            sleep 5
+            if curl -fsS http://127.0.0.1:8008/api/health/ | grep -q '"ok": true'; then break; fi
+            sleep 2
           done
-          echo 'Live verification failed.'
-          exit 1
+          curl -fsS http://127.0.0.1:8008/api/health/ | grep -q '"ok": true'
+          curl -fsS -H 'Host: audora.smarbiz.sbs' http://127.0.0.1/ | grep -qi 'Audora'
+          REMOTE
+
+      - name: Verify production
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 20 https://audora.smarbiz.sbs/ | grep -qi Audora
+          curl -fsSL --max-time 20 https://audora.smarbiz.sbs/api/health/ | grep -q '"ok": true'
+          curl -fsSL --max-time 20 https://audora.smarbiz.sbs/api/listings/ | grep -q 'neon-room'
+          echo 'Audora frontend + Django API + PostgreSQL are live.'
