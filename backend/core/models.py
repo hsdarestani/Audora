@@ -55,6 +55,22 @@ class Listing(models.Model):
         return self.name
 
 
+class AvailabilitySlot(models.Model):
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="availability_slots")
+    start_at = models.DateTimeField(db_index=True)
+    end_at = models.DateTimeField(db_index=True)
+    is_available = models.BooleanField(default=True, db_index=True)
+    note = models.CharField(max_length=180, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["start_at"]
+        constraints = [models.UniqueConstraint(fields=["listing", "start_at", "end_at"], name="unique_listing_availability")]
+
+    def __str__(self):
+        return f"{self.listing} {self.start_at:%Y-%m-%d %H:%M}"
+
+
 class Favorite(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="favorites")
     listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="favorited_by")
@@ -62,6 +78,22 @@ class Favorite(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["user", "listing"], name="unique_user_favorite")]
+
+
+class Review(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="audora_reviews")
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="review_items")
+    rating = models.PositiveSmallIntegerField()
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [models.UniqueConstraint(fields=["user", "listing"], name="unique_user_listing_review")]
+
+    def __str__(self):
+        return f"{self.listing} — {self.rating}/5"
 
 
 class SessionProject(models.Model):
@@ -96,7 +128,7 @@ class Booking(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="bookings")
     listing = models.ForeignKey(Listing, on_delete=models.PROTECT, related_name="bookings")
     session = models.ForeignKey(SessionProject, null=True, blank=True, on_delete=models.SET_NULL, related_name="bookings")
-    start_at = models.DateTimeField()
+    start_at = models.DateTimeField(db_index=True)
     duration_hours = models.DecimalField(max_digits=4, decimal_places=1, default=1)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True)
