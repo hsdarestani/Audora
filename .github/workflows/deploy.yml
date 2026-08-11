@@ -6,6 +6,7 @@ on:
     paths:
       - 'index.html'
       - 'styles.css'
+      - 'mobile-polish.css'
       - 'app.js'
       - 'i18n.js'
       - '.github/workflows/deploy.yml'
@@ -148,9 +149,17 @@ jobs:
                   try_files $uri $uri/ /index.html;
               }
 
-              location ~* \.(?:css|js|jpg|jpeg|gif|png|svg|webp|ico|woff2?)$ {
+              # Prototype assets change frequently. Always revalidate CSS/JS so
+              # a newly deployed visual pass is visible immediately on phones.
+              location ~* \.(?:css|js)$ {
+                  expires -1;
+                  add_header Cache-Control "no-cache, no-store, must-revalidate";
+                  try_files $uri =404;
+              }
+
+              location ~* \.(?:jpg|jpeg|gif|png|svg|webp|ico|woff2?)$ {
                   expires 7d;
-                  add_header Cache-Control "public, max-age=604800, immutable";
+                  add_header Cache-Control "public, max-age=604800";
                   try_files $uri =404;
               }
           }
@@ -167,7 +176,7 @@ jobs:
         run: |
           set -euo pipefail
           export SSHPASS="$DEPLOY_PASS"
-          tar -czf /tmp/audora-site.tgz index.html styles.css app.js i18n.js
+          tar -czf /tmp/audora-site.tgz index.html styles.css mobile-polish.css app.js i18n.js
           $SCP_BASE -P "$SSH_PORT" -o StrictHostKeyChecking=no /tmp/audora-site.tgz "$SSH_TARGET":/tmp/audora-site.tgz
           REMOTE_SHELL="bash -s"
           if [[ "$SSH_TARGET" != root@* ]]; then REMOTE_SHELL="sudo -n bash -s"; fi
@@ -176,6 +185,12 @@ jobs:
           rm -rf /var/www/audora/*
           tar -xzf /tmp/audora-site.tgz -C /var/www/audora
           rm -f /tmp/audora-site.tgz
+
+          # Keep the base stylesheet untouched in git and compose the dedicated
+          # responsive polish layer into the production stylesheet at deploy.
+          printf '\n\n/* ===== responsive polish layer ===== */\n' >> /var/www/audora/styles.css
+          cat /var/www/audora/mobile-polish.css >> /var/www/audora/styles.css
+
           chown -R www-data:www-data /var/www/audora
           find /var/www/audora -type d -exec chmod 755 {} \;
           find /var/www/audora -type f -exec chmod 644 {} \;
