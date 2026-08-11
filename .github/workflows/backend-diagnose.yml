@@ -1,0 +1,39 @@
+name: Diagnose Audora backend
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/backend-diagnose.yml']
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      HOST: ${{ secrets.HOST }}
+      PASS: ${{ secrets.PASS }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Inspect backend service safely
+        shell: bash
+        run: |
+          set -e
+          export SSHPASS="$PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no root@$HOST 'bash -s' <<'REMOTE'
+          set +e
+          echo '=== SERVICE ==='
+          systemctl --no-pager --full status audora.service
+          echo '=== JOURNAL ==='
+          journalctl -u audora.service -n 80 --no-pager
+          echo '=== PORT ==='
+          ss -ltnp | grep 8008 || true
+          echo '=== LOCAL HEALTH ==='
+          curl -v --max-time 8 http://127.0.0.1:8008/api/health/ 2>&1 || true
+          echo '=== NGINX HEALTH ==='
+          curl -v --max-time 8 -H 'Host: audora.smarbiz.sbs' http://127.0.0.1/api/health/ 2>&1 || true
+          echo '=== DB CHECK ==='
+          set -a; source /etc/audora/audora.env; set +a
+          cd /opt/audora/app/backend
+          /opt/audora/venv/bin/python manage.py check || true
+          /opt/audora/venv/bin/python manage.py shell -c "from core.models import Listing; print('LISTINGS', Listing.objects.count())" || true
+          REMOTE
