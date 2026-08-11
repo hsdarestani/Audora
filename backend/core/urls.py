@@ -1,5 +1,5 @@
 from django.urls import path
-from . import action_views, booking_views, marketplace_views, views
+from . import action_views, booking_views, calendar_views, marketplace_views, views
 
 urlpatterns = [
     path("health/", views.health),
@@ -9,9 +9,9 @@ urlpatterns = [
     path("auth/logout/", views.logout_api),
     path("listings/", views.listings_api),
     path("listings/<slug:slug>/", views.listing_detail_api),
-    path("listings/<slug:slug>/availability/", marketplace_views.availability_api),
+    path("listings/<slug:slug>/availability/", calendar_views.availability_api),
     path("listings/<slug:slug>/reviews/", marketplace_views.reviews_api),
-    path("availability/<int:slot_id>/", marketplace_views.availability_delete_api),
+    path("availability/<int:slot_id>/", calendar_views.availability_delete_api),
     path("favorites/<slug:slug>/", views.favorite_api),
     path("match/", views.smart_match_api),
     path("sessions/", marketplace_views.sessions_v2),
