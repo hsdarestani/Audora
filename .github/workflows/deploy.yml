@@ -31,13 +31,51 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq sshpass
 
-      - name: Prepare server and Nginx
+      - name: Resolve SSH target
         env:
           HOST: ${{ secrets.HOST }}
           PASS: ${{ secrets.PASS }}
         run: |
+          set -euo pipefail
           export SSHPASS="$PASS"
-          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 root@"$HOST" 'bash -s' <<'REMOTE'
+
+          SSH_HOST="$HOST"
+          SSH_PORT="22"
+
+          if [[ "$SSH_HOST" == *":"* && "$SSH_HOST" != *"@"* ]]; then
+            MAYBE_PORT="${SSH_HOST##*:}"
+            if [[ "$MAYBE_PORT" =~ ^[0-9]+$ ]]; then
+              SSH_PORT="$MAYBE_PORT"
+              SSH_HOST="${SSH_HOST%:*}"
+            fi
+          fi
+
+          if [[ "$SSH_HOST" == *"@"* ]]; then
+            CANDIDATES=("$SSH_HOST")
+          else
+            CANDIDATES=("root@$SSH_HOST" "ubuntu@$SSH_HOST" "debian@$SSH_HOST" "admin@$SSH_HOST")
+          fi
+
+          for TARGET in "${CANDIDATES[@]}"; do
+            if sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o PreferredAuthentications=password -o PubkeyAuthentication=no "$TARGET" 'printf ok' >/dev/null 2>&1; then
+              echo "SSH target resolved: ${TARGET%@*}@***"
+              echo "SSH_TARGET=$TARGET" >> "$GITHUB_ENV"
+              echo "SSH_PORT=$SSH_PORT" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+
+          echo 'Could not authenticate with HOST/PASS using root, ubuntu, debian or admin.'
+          exit 1
+
+      - name: Prepare server and Nginx
+        env:
+          PASS: ${{ secrets.PASS }}
+        run: |
+          export SSHPASS="$PASS"
+          REMOTE_SHELL="bash -s"
+          if [[ "$SSH_TARGET" != root@* ]]; then REMOTE_SHELL="sudo -n bash -s"; fi
+          sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
           set -euo pipefail
 
           DOMAIN="audora.smarbiz.sbs"
@@ -79,13 +117,14 @@ jobs:
 
       - name: Upload prototype
         env:
-          HOST: ${{ secrets.HOST }}
           PASS: ${{ secrets.PASS }}
         run: |
           export SSHPASS="$PASS"
           tar -czf /tmp/audora-site.tgz index.html styles.css app.js i18n.js
-          sshpass -e scp -o StrictHostKeyChecking=no /tmp/audora-site.tgz root@"$HOST":/tmp/audora-site.tgz
-          sshpass -e ssh -o StrictHostKeyChecking=no root@"$HOST" 'bash -s' <<'REMOTE'
+          sshpass -e scp -P "$SSH_PORT" -o StrictHostKeyChecking=no /tmp/audora-site.tgz "$SSH_TARGET":/tmp/audora-site.tgz
+          REMOTE_SHELL="bash -s"
+          if [[ "$SSH_TARGET" != root@* ]]; then REMOTE_SHELL="sudo -n bash -s"; fi
+          sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
           set -euo pipefail
           rm -rf /var/www/audora/*
           tar -xzf /tmp/audora-site.tgz -C /var/www/audora
@@ -100,11 +139,12 @@ jobs:
 
       - name: Enable HTTPS
         env:
-          HOST: ${{ secrets.HOST }}
           PASS: ${{ secrets.PASS }}
         run: |
           export SSHPASS="$PASS"
-          sshpass -e ssh -o StrictHostKeyChecking=no root@"$HOST" 'bash -s' <<'REMOTE'
+          REMOTE_SHELL="bash -s"
+          if [[ "$SSH_TARGET" != root@* ]]; then REMOTE_SHELL="sudo -n bash -s"; fi
+          sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
           set -euo pipefail
           DOMAIN="audora.smarbiz.sbs"
 
