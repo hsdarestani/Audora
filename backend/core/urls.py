@@ -1,5 +1,5 @@
 from django.urls import path
-from . import marketplace_views, views
+from . import action_views, marketplace_views, views
 
 urlpatterns = [
     path("health/", views.health),
@@ -16,6 +16,7 @@ urlpatterns = [
     path("match/", views.smart_match_api),
     path("sessions/", marketplace_views.sessions_v2),
     path("sessions/<uuid:session_id>/", views.session_detail_api),
+    path("sessions/<uuid:session_id>/cancel/", action_views.cancel_session_api),
     path("sessions/<uuid:session_id>/files/", views.session_file_api),
     path("tasks/<int:task_id>/", views.task_api),
     path("bookings/", views.bookings_api),
