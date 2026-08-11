@@ -11,38 +11,47 @@ on:
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
+concurrency:
+  group: audora-production
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.HOST }}
+      DEPLOY_PASS: ${{ secrets.PASS }}
+      DEPLOY_USER: ${{ secrets.SSH_USER }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Validate required secrets
-        env:
-          HOST: ${{ secrets.HOST }}
-          PASS: ${{ secrets.PASS }}
         run: |
-          test -n "$HOST" || (echo 'HOST secret is missing' && exit 1)
-          test -n "$PASS" || (echo 'PASS secret is missing' && exit 1)
+          test -n "$DEPLOY_HOST" || (echo 'HOST secret is missing' && exit 1)
+          test -n "$DEPLOY_PASS" || (echo 'PASS secret is missing' && exit 1)
 
       - name: Install SSH client helper
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq sshpass
 
-      - name: Resolve SSH target
-        env:
-          HOST: ${{ secrets.HOST }}
-          PASS: ${{ secrets.PASS }}
+      - name: Resolve SSH target and authentication
+        shell: bash
         run: |
           set -euo pipefail
-          export SSHPASS="$PASS"
 
-          SSH_HOST="$HOST"
+          SSH_HOST="$DEPLOY_HOST"
           SSH_PORT="22"
+          HOST_USER=""
 
-          if [[ "$SSH_HOST" == *":"* && "$SSH_HOST" != *"@"* ]]; then
+          if [[ "$SSH_HOST" == *"@"* ]]; then
+            HOST_USER="${SSH_HOST%@*}"
+            SSH_HOST="${SSH_HOST#*@}"
+          fi
+
+          if [[ "$SSH_HOST" == *":"* ]]; then
             MAYBE_PORT="${SSH_HOST##*:}"
             if [[ "$MAYBE_PORT" =~ ^[0-9]+$ ]]; then
               SSH_PORT="$MAYBE_PORT"
@@ -50,32 +59,70 @@ jobs:
             fi
           fi
 
-          if [[ "$SSH_HOST" == *"@"* ]]; then
-            CANDIDATES=("$SSH_HOST")
+          if [[ "$DEPLOY_PASS" == *"BEGIN "*"PRIVATE KEY"* ]]; then
+            printf '%s\n' "$DEPLOY_PASS" > /tmp/audora_ssh_key
+            chmod 600 /tmp/audora_ssh_key
+            SSH_AUTH="key"
           else
-            CANDIDATES=("root@$SSH_HOST" "ubuntu@$SSH_HOST" "debian@$SSH_HOST" "admin@$SSH_HOST")
+            export SSHPASS="$DEPLOY_PASS"
+            SSH_AUTH="password"
           fi
 
-          for TARGET in "${CANDIDATES[@]}"; do
-            if sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o PreferredAuthentications=password -o PubkeyAuthentication=no "$TARGET" 'printf ok' >/dev/null 2>&1; then
-              echo "SSH target resolved: ${TARGET%@*}@***"
-              echo "SSH_TARGET=$TARGET" >> "$GITHUB_ENV"
-              echo "SSH_PORT=$SSH_PORT" >> "$GITHUB_ENV"
-              exit 0
+          CANDIDATES=()
+          if [[ -n "${DEPLOY_USER:-}" ]]; then CANDIDATES+=("$DEPLOY_USER"); fi
+          if [[ -n "$HOST_USER" ]]; then CANDIDATES+=("$HOST_USER"); fi
+          CANDIDATES+=(root ubuntu debian admin deploy centos ec2-user)
+
+          declare -A SEEN=()
+          for USERNAME in "${CANDIDATES[@]}"; do
+            [[ -n "$USERNAME" ]] || continue
+            [[ -z "${SEEN[$USERNAME]:-}" ]] || continue
+            SEEN[$USERNAME]=1
+
+            if [[ "$SSH_AUTH" == "key" ]]; then
+              if ssh -i /tmp/audora_ssh_key -p "$SSH_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o BatchMode=yes "$USERNAME@$SSH_HOST" 'printf ok' >/dev/null 2>&1; then
+                echo "SSH user resolved: $USERNAME"
+                echo "SSH_TARGET=$USERNAME@$SSH_HOST" >> "$GITHUB_ENV"
+                echo "SSH_PORT=$SSH_PORT" >> "$GITHUB_ENV"
+                echo "SSH_AUTH=$SSH_AUTH" >> "$GITHUB_ENV"
+                exit 0
+              fi
+            else
+              if sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o PreferredAuthentications=keyboard-interactive,password -o PubkeyAuthentication=no "$USERNAME@$SSH_HOST" 'printf ok' >/dev/null 2>&1; then
+                echo "SSH user resolved: $USERNAME"
+                echo "SSH_TARGET=$USERNAME@$SSH_HOST" >> "$GITHUB_ENV"
+                echo "SSH_PORT=$SSH_PORT" >> "$GITHUB_ENV"
+                echo "SSH_AUTH=$SSH_AUTH" >> "$GITHUB_ENV"
+                exit 0
+              fi
             fi
           done
 
-          echo 'Could not authenticate with HOST/PASS using root, ubuntu, debian or admin.'
+          echo 'SSH authentication failed with the supplied HOST/PASS credentials.'
+          echo "HOST includes username: $([[ -n "$HOST_USER" ]] && echo yes || echo no)"
+          echo "SSH_USER secret present: $([[ -n "${DEPLOY_USER:-}" ]] && echo yes || echo no)"
+          echo "PASS detected as: $SSH_AUTH"
           exit 1
 
-      - name: Prepare server and Nginx
-        env:
-          PASS: ${{ secrets.PASS }}
+      - name: Prepare SSH command
+        shell: bash
         run: |
-          export SSHPASS="$PASS"
+          if [[ "$SSH_AUTH" == "key" ]]; then
+            echo 'SSH_BASE=ssh -i /tmp/audora_ssh_key' >> "$GITHUB_ENV"
+            echo 'SCP_BASE=scp -i /tmp/audora_ssh_key' >> "$GITHUB_ENV"
+          else
+            echo 'SSH_BASE=sshpass -e ssh' >> "$GITHUB_ENV"
+            echo 'SCP_BASE=sshpass -e scp' >> "$GITHUB_ENV"
+          fi
+
+      - name: Prepare server and Nginx
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$DEPLOY_PASS"
           REMOTE_SHELL="bash -s"
           if [[ "$SSH_TARGET" != root@* ]]; then REMOTE_SHELL="sudo -n bash -s"; fi
-          sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
+          $SSH_BASE -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
           set -euo pipefail
 
           DOMAIN="audora.smarbiz.sbs"
@@ -116,15 +163,15 @@ jobs:
           REMOTE
 
       - name: Upload prototype
-        env:
-          PASS: ${{ secrets.PASS }}
+        shell: bash
         run: |
-          export SSHPASS="$PASS"
+          set -euo pipefail
+          export SSHPASS="$DEPLOY_PASS"
           tar -czf /tmp/audora-site.tgz index.html styles.css app.js i18n.js
-          sshpass -e scp -P "$SSH_PORT" -o StrictHostKeyChecking=no /tmp/audora-site.tgz "$SSH_TARGET":/tmp/audora-site.tgz
+          $SCP_BASE -P "$SSH_PORT" -o StrictHostKeyChecking=no /tmp/audora-site.tgz "$SSH_TARGET":/tmp/audora-site.tgz
           REMOTE_SHELL="bash -s"
           if [[ "$SSH_TARGET" != root@* ]]; then REMOTE_SHELL="sudo -n bash -s"; fi
-          sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
+          $SSH_BASE -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
           set -euo pipefail
           rm -rf /var/www/audora/*
           tar -xzf /tmp/audora-site.tgz -C /var/www/audora
@@ -134,17 +181,17 @@ jobs:
           find /var/www/audora -type f -exec chmod 644 {} \;
           nginx -t
           systemctl reload nginx
-          curl -fsS -H 'Host: audora.smarbiz.sbs' http://127.0.0.1/ >/dev/null
+          curl -fsS -H 'Host: audora.smarbiz.sbs' http://127.0.0.1/ | grep -qi 'Audora'
           REMOTE
 
       - name: Enable HTTPS
-        env:
-          PASS: ${{ secrets.PASS }}
+        shell: bash
         run: |
-          export SSHPASS="$PASS"
+          set -euo pipefail
+          export SSHPASS="$DEPLOY_PASS"
           REMOTE_SHELL="bash -s"
           if [[ "$SSH_TARGET" != root@* ]]; then REMOTE_SHELL="sudo -n bash -s"; fi
-          sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
+          $SSH_BASE -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_TARGET" "$REMOTE_SHELL" <<'REMOTE'
           set -euo pipefail
           DOMAIN="audora.smarbiz.sbs"
 
@@ -153,18 +200,14 @@ jobs:
             DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
           fi
 
-          if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
-            certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
-          else
-            certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
-          fi
-
+          certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
           nginx -t
           systemctl reload nginx
           REMOTE
 
       - name: Verify live site
         run: |
+          set -euo pipefail
           for i in 1 2 3 4 5 6; do
             if curl -fsSL --max-time 15 https://audora.smarbiz.sbs/ | grep -qi 'Audora'; then
               echo 'Audora is live over HTTPS.'
