@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Booking, Conversation, Favorite, Listing, Message, Notification, ProviderProfile, SessionFile, SessionProject, SessionTask
+from .models import AvailabilitySlot, Booking, Conversation, Favorite, Listing, Message, Notification, ProviderProfile, Review, SessionFile, SessionProject, SessionTask
 
 
 @admin.register(Listing)
@@ -8,6 +8,20 @@ class ListingAdmin(admin.ModelAdmin):
     list_filter = ("category", "city", "instant", "top", "active")
     search_fields = ("name", "slug", "city")
     prepopulated_fields = {"slug": ("name",)}
+
+
+@admin.register(AvailabilitySlot)
+class AvailabilitySlotAdmin(admin.ModelAdmin):
+    list_display = ("listing", "start_at", "end_at", "is_available")
+    list_filter = ("is_available", "listing__category")
+    search_fields = ("listing__name", "note")
+
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+    list_display = ("listing", "user", "rating", "updated_at")
+    list_filter = ("rating", "listing__category")
+    search_fields = ("listing__name", "user__username", "comment")
 
 
 @admin.register(SessionProject)
