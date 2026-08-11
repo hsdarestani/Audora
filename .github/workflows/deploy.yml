@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate required secrets
         run: |
@@ -181,7 +181,8 @@ jobs:
           find /var/www/audora -type f -exec chmod 644 {} \;
           nginx -t
           systemctl reload nginx
-          curl -fsS -H 'Host: audora.smarbiz.sbs' http://127.0.0.1/ | grep -qi 'Audora'
+          response="$(curl -fsS -H 'Host: audora.smarbiz.sbs' http://127.0.0.1/)"
+          grep -qi 'Audora' <<< "$response"
           REMOTE
 
       - name: Enable HTTPS
@@ -206,10 +207,11 @@ jobs:
           REMOTE
 
       - name: Verify live site
+        shell: bash
         run: |
           set -euo pipefail
           for i in 1 2 3 4 5 6; do
-            if curl -fsSL --max-time 15 https://audora.smarbiz.sbs/ | grep -qi 'Audora'; then
+            if response="$(curl -fsSL --max-time 15 https://audora.smarbiz.sbs/)" && grep -qi 'Audora' <<< "$response"; then
               echo 'Audora is live over HTTPS.'
               exit 0
             fi
