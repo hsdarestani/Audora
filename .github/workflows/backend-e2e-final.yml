@@ -1,0 +1,100 @@
+name: Audora final production E2E
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/backend-e2e-final.yml']
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      BASE: https://audora.smarbiz.sbs
+      HOST: ${{ secrets.HOST }}
+      PASS: ${{ secrets.PASS }}
+    steps:
+      - name: Test full production flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          C=/tmp/cookie.txt
+          EMAIL="final-${GITHUB_RUN_ID}@audora.local"
+          PASSWORD='AudoraFinal2026!'
+          START='2026-12-01T10:00:00Z'
+          END='2026-12-01T18:00:00Z'
+          SESSION_START='2027-02-19T20:00:00Z'
+
+          echo '[1/10] health + auth'
+          curl -fsS "$BASE/api/health/" | grep -q '"ok": true'
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/auth/register/" -H 'Content-Type: application/json' \
+            --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"name\":\"Final E2E\"}" | grep -q '"ok": true'
+          curl -fsS -c "$C" -b "$C" "$BASE/api/bootstrap/" | grep -q "$EMAIL"
+
+          echo '[2/10] favorite + smart match'
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/favorites/neon-room/" -H 'Content-Type: application/json' --data '{"toggle":false}' | grep -q '"active": true'
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/match/" -H 'Content-Type: application/json' \
+            --data '{"goal":"record","city":"Berlin","genres":["Hip-Hop"],"budget":900}' > /tmp/match.json
+          python3 -c "import json;d=json.load(open('/tmp/match.json'));assert d['studio'] and d['team'] and d['score']>=80"
+
+          echo '[3/10] provider listing CRUD'
+          curl -fsS -c "$C" -b "$C" -X PATCH "$BASE/api/provider/dashboard/" -H 'Content-Type: application/json' --data '{"active":true}' | grep -q '"active": true'
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/provider/listings/" -H 'Content-Type: application/json' \
+            --data "{\"name\":\"Final Studio ${GITHUB_RUN_ID}\",\"category\":\"studio\",\"city\":\"Berlin\",\"price\":77,\"instant\":true,\"genres\":[\"Hip-Hop\"],\"about_de\":\"Teststudio\",\"about_en\":\"Test studio\"}" > /tmp/listing.json
+          LISTING="$(python3 -c "import json;print(json.load(open('/tmp/listing.json'))['id'])")"
+          curl -fsS -c "$C" -b "$C" -X PATCH "$BASE/api/provider/listings/$LISTING/" -H 'Content-Type: application/json' --data '{"price":79}' | grep -q '"price": 79.0'
+
+          echo '[4/10] availability calendar'
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/listings/$LISTING/availability/" -H 'Content-Type: application/json' \
+            --data "{\"start\":\"$START\",\"end\":\"$END\",\"available\":true,\"note\":\"E2E open\"}" > /tmp/slot.json
+          SLOT="$(python3 -c "import json;print(json.load(open('/tmp/slot.json'))['id'])")"
+          curl -fsS -c "$C" -b "$C" "$BASE/api/listings/$LISTING/availability/" > /tmp/calendar.json
+          SLOT="$SLOT" python3 -c "import json,os;d=json.load(open('/tmp/calendar.json'));assert any(str(x['id'])==os.environ['SLOT'] and x['available'] for x in d['slots'])"
+
+          echo '[5/10] reviews'
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/listings/$LISTING/reviews/" -H 'Content-Type: application/json' \
+            --data '{"rating":5,"comment":"Production E2E review"}' > /tmp/review.json
+          python3 -c "import json;d=json.load(open('/tmp/review.json'));assert d['rating']==5.0 and d['count']==1"
+
+          echo '[6/10] direct booking + collision protection'
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/bookings/" -H 'Content-Type: application/json' \
+            --data "{\"listing_id\":\"$LISTING\",\"start_at\":\"$START\",\"duration_hours\":2}" | grep -q '"status": "confirmed"'
+          CODE="$(curl -sS -o /tmp/conflict.json -w '%{http_code}' -c "$C" -b "$C" -X POST "$BASE/api/bookings/" -H 'Content-Type: application/json' \
+            --data "{\"listing_id\":\"$LISTING\",\"start_at\":\"$START\",\"duration_hours\":2}")"
+          test "$CODE" = 409
+          grep -q 'slot_just_booked' /tmp/conflict.json
+
+          echo '[7/10] session builder + task + file'
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/sessions/" -H 'Content-Type: application/json' \
+            --data "{\"title\":\"Final E2E Session\",\"goal\":\"record\",\"city\":\"Berlin\",\"genres\":[\"Hip-Hop\"],\"budget\":900,\"duration_hours\":3,\"start_at\":\"$SESSION_START\",\"status\":\"confirmed\"}" > /tmp/session.json
+          SID="$(python3 -c "import json;print(json.load(open('/tmp/session.json'))['id'])")"
+          STUDIO="$(python3 -c "import json;print(json.load(open('/tmp/session.json'))['studio']['id'])")"
+          curl -fsS -c "$C" -b "$C" "$BASE/api/sessions/$SID/" > /tmp/detail.json
+          TASK="$(python3 -c "import json;d=json.load(open('/tmp/detail.json'));print(next(x['id'] for x in d['tasks'] if not x['done']))")"
+          curl -fsS -c "$C" -b "$C" -X PATCH "$BASE/api/tasks/$TASK/" -H 'Content-Type: application/json' --data '{"done":true}' | grep -q '"done": true'
+          printf 'audora production e2e' >/tmp/audora-e2e.txt
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/sessions/$SID/files/" -F file=@/tmp/audora-e2e.txt | grep -q 'audora-e2e.txt'
+
+          echo '[8/10] cancellation releases slots'
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/sessions/$SID/cancel/" -H 'Content-Type: application/json' --data '{}' | grep -q '"status": "cancelled"'
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/bookings/" -H 'Content-Type: application/json' \
+            --data "{\"listing_id\":\"$STUDIO\",\"start_at\":\"$SESSION_START\",\"duration_hours\":1}" | grep -q '"status": "confirmed"'
+
+          echo '[9/10] persistent inbox'
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/conversations/listing/jona-k/" -H 'Content-Type: application/json' --data '{}' > /tmp/convo.json
+          CID="$(python3 -c "import json;print(json.load(open('/tmp/convo.json'))['id'])")"
+          curl -fsS -c "$C" -b "$C" -X POST "$BASE/api/conversations/$CID/" -H 'Content-Type: application/json' --data '{"text":"Final E2E message"}' | grep -q 'Final E2E message'
+          curl -fsS -c "$C" -b "$C" "$BASE/api/conversations/$CID/" | grep -q 'Final E2E message'
+
+          echo '[10/10] delete calendar slot'
+          curl -fsS -c "$C" -b "$C" -X DELETE "$BASE/api/availability/$SLOT/" | grep -q '"ok": true'
+          echo 'AUDORA FINAL E2E PASSED'
+
+      - name: Cleanup test account
+        if: always()
+        shell: bash
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          export SSHPASS="$PASS"
+          EMAIL="final-${GITHUB_RUN_ID}@audora.local"
+          sshpass -e ssh -o StrictHostKeyChecking=no root@$HOST "set -a; source /etc/audora/audora.env; set +a; cd /opt/audora/app/backend; /opt/audora/venv/bin/python manage.py shell -c \"from django.contrib.auth import get_user_model; U=get_user_model(); u=U.objects.filter(email='$EMAIL').first(); print('cleanup', bool(u)); u and u.delete()\""
