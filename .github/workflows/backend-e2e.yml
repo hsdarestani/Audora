@@ -21,6 +21,9 @@ jobs:
           COOKIE=/tmp/audora-cookie.txt
           EMAIL="ci-${GITHUB_RUN_ID}@audora.local"
           PASSWORD='AudoraTest2026!'
+          PROVIDER_START='2026-12-01T10:00:00Z'
+          PROVIDER_END='2026-12-01T18:00:00Z'
+          SESSION_START='2027-01-15T20:00:00Z'
 
           curl -fsS "$BASE/api/health/" | grep -q '"ok": true'
           curl -fsS "$BASE/api/listings/" | grep -q 'neon-room'
@@ -28,13 +31,14 @@ jobs:
           curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/auth/register/" \
             -H 'Content-Type: application/json' \
             --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"name\":\"CI User\"}" | grep -q '"ok": true'
-
           curl -fsS -c "$COOKIE" -b "$COOKIE" "$BASE/api/bootstrap/" | grep -q "$EMAIL"
 
+          # Favorites persist.
           curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/favorites/neon-room/" \
             -H 'Content-Type: application/json' --data '{"toggle":false}' | grep -q '"active": true'
           curl -fsS -c "$COOKIE" -b "$COOKIE" "$BASE/api/bootstrap/" | grep -q 'neon-room'
 
+          # Smart Match returns a real package.
           curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/match/" \
             -H 'Content-Type: application/json' \
             --data '{"goal":"record","city":"Berlin","genres":["Hip-Hop"],"budget":900}' > /tmp/match.json
@@ -44,35 +48,75 @@ jobs:
           assert d['score'] >= 80 and d['studio'] and len(d['team']) >= 1
           PY
 
+          # Provider mode + actual marketplace listing CRUD.
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X PATCH "$BASE/api/provider/dashboard/" \
+            -H 'Content-Type: application/json' --data '{"active":true}' | grep -q '"active": true'
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/provider/listings/" \
+            -H 'Content-Type: application/json' \
+            --data "{\"name\":\"CI Studio ${GITHUB_RUN_ID}\",\"category\":\"studio\",\"city\":\"Berlin\",\"price\":77,\"instant\":true,\"genres\":[\"Hip-Hop\"],\"about_de\":\"E2E Studio\",\"about_en\":\"E2E studio\"}" > /tmp/provider-listing.json
+          PROVIDER_LISTING="$(python3 -c "import json;print(json.load(open('/tmp/provider-listing.json'))['id'])")"
+          curl -fsS -c "$COOKIE" -b "$COOKIE" "$BASE/api/provider/listings/" | grep -q "$PROVIDER_LISTING"
+
+          # Provider availability persists.
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/listings/$PROVIDER_LISTING/availability/" \
+            -H 'Content-Type: application/json' \
+            --data "{\"start\":\"$PROVIDER_START\",\"end\":\"$PROVIDER_END\",\"available\":true}" > /tmp/slot.json
+          SLOT_ID="$(python3 -c "import json;print(json.load(open('/tmp/slot.json'))['id'])")"
+          curl -fsS -c "$COOKIE" -b "$COOKIE" "$BASE/api/listings/$PROVIDER_LISTING/availability/" | grep -q "$PROVIDER_START"
+
+          # Reviews persist and update aggregate rating.
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/listings/$PROVIDER_LISTING/reviews/" \
+            -H 'Content-Type: application/json' --data '{"rating":5,"comment":"E2E review"}' | grep -q '"rating": 5.0'
+          curl -fsS -c "$COOKIE" -b "$COOKIE" "$BASE/api/listings/$PROVIDER_LISTING/reviews/" | grep -q 'E2E review'
+
+          # Direct booking succeeds inside availability, then double-booking is rejected.
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/bookings/" \
+            -H 'Content-Type: application/json' \
+            --data "{\"listing_id\":\"$PROVIDER_LISTING\",\"start_at\":\"$PROVIDER_START\",\"duration_hours\":2}" > /tmp/direct-booking.json
+          grep -q '"status": "confirmed"' /tmp/direct-booking.json
+          HTTP_CODE="$(curl -sS -o /tmp/conflict.json -w '%{http_code}' -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/bookings/" \
+            -H 'Content-Type: application/json' \
+            --data "{\"listing_id\":\"$PROVIDER_LISTING\",\"start_at\":\"$PROVIDER_START\",\"duration_hours\":2}")"
+          test "$HTTP_CODE" = '409'
+          grep -q 'slot_just_booked' /tmp/conflict.json
+
+          # Session Builder creates a persisted project, tasks and file storage.
           curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/sessions/" \
             -H 'Content-Type: application/json' \
-            --data '{"title":"CI E2E Session","goal":"record","city":"Berlin","genres":["Hip-Hop"],"budget":900,"duration_hours":3,"start_at":"2026-08-20T20:00:00Z","status":"confirmed"}' > /tmp/session.json
+            --data "{\"title\":\"CI E2E Session\",\"goal\":\"record\",\"city\":\"Berlin\",\"genres\":[\"Hip-Hop\"],\"budget\":900,\"duration_hours\":3,\"start_at\":\"$SESSION_START\",\"status\":\"confirmed\"}" > /tmp/session.json
           SESSION_ID="$(python3 -c "import json;print(json.load(open('/tmp/session.json'))['id'])")"
+          SESSION_STUDIO="$(python3 -c "import json;print(json.load(open('/tmp/session.json'))['studio']['id'])")"
           curl -fsS -c "$COOKIE" -b "$COOKIE" "$BASE/api/sessions/$SESSION_ID/" > /tmp/session-detail.json
           TASK_ID="$(python3 -c "import json;d=json.load(open('/tmp/session-detail.json'));print(next(x['id'] for x in d['tasks'] if not x['done']))")"
           curl -fsS -c "$COOKIE" -b "$COOKIE" -X PATCH "$BASE/api/tasks/$TASK_ID/" \
             -H 'Content-Type: application/json' --data '{"done":true}' | grep -q '"done": true'
-
           echo 'Audora E2E upload' > /tmp/e2e.txt
-          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/sessions/$SESSION_ID/files/" \
-            -F file=@/tmp/e2e.txt | grep -q 'e2e.txt'
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/sessions/$SESSION_ID/files/" -F file=@/tmp/e2e.txt | grep -q 'e2e.txt'
 
+          # Cancelling the session releases all child bookings.
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/sessions/$SESSION_ID/cancel/" \
+            -H 'Content-Type: application/json' --data '{}' | grep -q '"status": "cancelled"'
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/bookings/" \
+            -H 'Content-Type: application/json' \
+            --data "{\"listing_id\":\"$SESSION_STUDIO\",\"start_at\":\"$SESSION_START\",\"duration_hours\":1}" | grep -q '"status": "confirmed"'
+
+          # Inbox persists messages.
           curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/conversations/listing/jona-k/" \
             -H 'Content-Type: application/json' --data '{}' > /tmp/conversation.json
           CONVERSATION_ID="$(python3 -c "import json;print(json.load(open('/tmp/conversation.json'))['id'])")"
           curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/api/conversations/$CONVERSATION_ID/" \
             -H 'Content-Type: application/json' --data '{"text":"CI backend message"}' | grep -q 'CI backend message'
 
-          curl -fsS -c "$COOKIE" -b "$COOKIE" -X PATCH "$BASE/api/provider/dashboard/" \
-            -H 'Content-Type: application/json' --data '{"active":true}' | grep -q '"active": true'
+          # Slot management can delete provider-defined availability again.
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X DELETE "$BASE/api/availability/$SLOT_ID/" | grep -q '"ok": true'
 
-          echo 'All Audora backend E2E flows passed.'
+          echo 'All Audora production E2E flows passed.'
 
-      - name: Cleanup E2E user
+      - name: Cleanup E2E data
         if: always()
         shell: bash
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
           export SSHPASS="$PASS"
           EMAIL="ci-${GITHUB_RUN_ID}@audora.local"
-          sshpass -e ssh -o StrictHostKeyChecking=no root@$HOST "set -a; source /etc/audora/audora.env; set +a; cd /opt/audora/app/backend; /opt/audora/venv/bin/python manage.py shell -c \"from django.contrib.auth import get_user_model; U=get_user_model(); u=U.objects.filter(email='$EMAIL').first(); print('cleanup', bool(u)); u and u.delete()\""
+          sshpass -e ssh -o StrictHostKeyChecking=no root@$HOST "set -a; source /etc/audora/audora.env; set +a; cd /opt/audora/app/backend; /opt/audora/venv/bin/python manage.py shell -c \"from django.contrib.auth import get_user_model; from core.models import Listing; U=get_user_model(); u=U.objects.filter(email='$EMAIL').first(); print('cleanup', bool(u)); u and Listing.objects.filter(provider=u).delete(); u and u.delete()\""
