@@ -1,0 +1,102 @@
+name: Diagnose Audora deployment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.HOST }}
+      DEPLOY_PASS: ${{ secrets.PASS }}
+      DEPLOY_USER: ${{ secrets.SSH_USER }}
+    steps:
+      - name: Install helpers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass netcat-openbsd dnsutils
+
+      - name: Diagnose safely
+        shell: bash
+        run: |
+          set -u
+          test -n "$DEPLOY_HOST" || { echo '::error::HOST secret is missing'; exit 1; }
+          test -n "$DEPLOY_PASS" || { echo '::error::PASS secret is missing'; exit 1; }
+
+          RAW_HOST="$DEPLOY_HOST"
+          HOST_USER=""
+          SSH_PORT="22"
+
+          if [[ "$RAW_HOST" == *"@"* ]]; then
+            HOST_USER="${RAW_HOST%@*}"
+            RAW_HOST="${RAW_HOST#*@}"
+          fi
+          if [[ "$RAW_HOST" == *":"* ]]; then
+            MAYBE_PORT="${RAW_HOST##*:}"
+            if [[ "$MAYBE_PORT" =~ ^[0-9]+$ ]]; then
+              SSH_PORT="$MAYBE_PORT"
+              RAW_HOST="${RAW_HOST%:*}"
+            fi
+          fi
+
+          DOMAIN_IPS="$(dig +short A audora.smarbiz.sbs | sort -u | tr '\n' ' ')"
+          HOST_IPS="$(getent ahostsv4 "$RAW_HOST" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ')"
+
+          if [[ -z "$DOMAIN_IPS" ]]; then
+            echo '::error::audora.smarbiz.sbs currently has no IPv4 DNS answer.'
+          elif [[ -n "$HOST_IPS" ]]; then
+            MATCH=no
+            for d in $DOMAIN_IPS; do for h in $HOST_IPS; do [[ "$d" == "$h" ]] && MATCH=yes; done; done
+            if [[ "$MATCH" == yes ]]; then
+              echo '::notice::DNS is correct: audora.smarbiz.sbs points to the HOST server.'
+            else
+              echo '::error::DNS mismatch: audora.smarbiz.sbs does not point to the HOST server stored in GitHub Secrets.'
+            fi
+          fi
+
+          if nc -z -w 8 "$RAW_HOST" "$SSH_PORT"; then
+            echo "::notice::SSH port $SSH_PORT is reachable on the HOST server."
+          else
+            echo "::error::SSH port $SSH_PORT is not reachable on the HOST server."
+            exit 1
+          fi
+
+          if [[ "$DEPLOY_PASS" == *"BEGIN "*"PRIVATE KEY"* ]]; then
+            echo '::notice::PASS is detected as an SSH private key.'
+            printf '%s\n' "$DEPLOY_PASS" > /tmp/key
+            chmod 600 /tmp/key
+            USERS=()
+            [[ -n "${DEPLOY_USER:-}" ]] && USERS+=("$DEPLOY_USER")
+            [[ -n "$HOST_USER" ]] && USERS+=("$HOST_USER")
+            USERS+=(root ubuntu debian admin deploy)
+            for u in "${USERS[@]}"; do
+              if ssh -i /tmp/key -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=8 "$u@$RAW_HOST" true >/dev/null 2>&1; then
+                echo "::notice::SSH authentication works with user '$u'."
+                exit 0
+              fi
+            done
+          else
+            echo '::notice::PASS is detected as a password.'
+            export SSHPASS="$DEPLOY_PASS"
+            USERS=()
+            [[ -n "${DEPLOY_USER:-}" ]] && USERS+=("$DEPLOY_USER")
+            [[ -n "$HOST_USER" ]] && USERS+=("$HOST_USER")
+            USERS+=(root ubuntu debian admin deploy)
+            for u in "${USERS[@]}"; do
+              if sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o PreferredAuthentications=keyboard-interactive,password -o PubkeyAuthentication=no -o ConnectTimeout=8 "$u@$RAW_HOST" true >/dev/null 2>&1; then
+                echo "::notice::SSH authentication works with user '$u'."
+                exit 0
+              fi
+            done
+          fi
+
+          if [[ -n "${DEPLOY_USER:-}" ]]; then
+            echo '::error::SSH is reachable, but authentication is rejected even with the SSH_USER secret. Recheck PASS and SSH_USER.'
+          else
+            echo '::error::SSH is reachable, but HOST/PASS authentication is rejected. Recheck the PASS secret or add SSH_USER if the login user is not root/ubuntu/debian/admin/deploy.'
+          fi
+          exit 1
