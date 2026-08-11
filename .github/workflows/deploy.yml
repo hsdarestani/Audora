@@ -11,6 +11,7 @@ on:
       - 'functionality.css'
       - 'app.js'
       - 'api.js'
+      - 'booking-ui.js'
       - 'i18n.js'
       - 'requirements.txt'
       - 'backend/**'
@@ -58,7 +59,7 @@ jobs:
           done
           echo 'SSH authentication failed.'; exit 1
       - name: Prepare release
-        run: tar -czf /tmp/audora-release.tgz index.html styles.css mobile-polish.css typography.css functionality.css app.js api.js i18n.js requirements.txt backend
+        run: tar -czf /tmp/audora-release.tgz index.html styles.css mobile-polish.css typography.css functionality.css app.js api.js booking-ui.js i18n.js requirements.txt backend
       - name: Upload and install full stack
         shell: bash
         run: |
@@ -121,11 +122,11 @@ jobs:
           UNIT
           systemctl daemon-reload; systemctl enable --now audora.service; systemctl restart audora.service
           rm -rf "$WEBROOT"/*
-          cp "$APP_ROOT/index.html" "$APP_ROOT/styles.css" "$APP_ROOT/mobile-polish.css" "$APP_ROOT/typography.css" "$APP_ROOT/functionality.css" "$APP_ROOT/app.js" "$APP_ROOT/api.js" "$APP_ROOT/i18n.js" "$WEBROOT/"
+          cp "$APP_ROOT/index.html" "$APP_ROOT/styles.css" "$APP_ROOT/mobile-polish.css" "$APP_ROOT/typography.css" "$APP_ROOT/functionality.css" "$APP_ROOT/app.js" "$APP_ROOT/api.js" "$APP_ROOT/booking-ui.js" "$APP_ROOT/i18n.js" "$WEBROOT/"
           printf '\n\n/* ===== responsive polish layer ===== */\n' >> "$WEBROOT/styles.css"; cat "$WEBROOT/mobile-polish.css" >> "$WEBROOT/styles.css"
           printf '\n\n/* ===== global typography layer ===== */\n' >> "$WEBROOT/styles.css"; cat "$WEBROOT/typography.css" >> "$WEBROOT/styles.css"
           printf '\n\n/* ===== functional UI layer ===== */\n' >> "$WEBROOT/styles.css"; cat "$WEBROOT/functionality.css" >> "$WEBROOT/styles.css"
-          if ! grep -q 'src="/api.js"' "$WEBROOT/index.html"; then sed -i 's#</body>#  <script src="/api.js"></script>\n</body>#' "$WEBROOT/index.html"; fi
+          if ! grep -q 'src="/api.js"' "$WEBROOT/index.html"; then sed -i 's#</body>#  <script src="/api.js"></script>\n  <script src="/booking-ui.js"></script>\n</body>#' "$WEBROOT/index.html"; elif ! grep -q 'src="/booking-ui.js"' "$WEBROOT/index.html"; then sed -i 's#</body>#  <script src="/booking-ui.js"></script>\n</body>#' "$WEBROOT/index.html"; fi
           chown -R www-data:www-data "$WEBROOT"
           cat > /etc/nginx/sites-available/audora.smarbiz.sbs <<NGINX
           server {
