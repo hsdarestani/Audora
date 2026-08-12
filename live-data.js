@@ -1,4 +1,4 @@
-/* Keep marketplace discovery fresh without requiring a full page reload. */
+/* Keep live marketplace/inbox data honest without requiring full page reloads. */
 (() => {
   let refreshPromise = null;
   let lastRefresh = 0;
@@ -40,4 +40,47 @@
     const discover = document.querySelector('section[data-view="discover"]');
     if (discover?.classList.contains('active')) refreshMarketplace();
   });
+
+  /* A message is only shown as sent after PostgreSQL confirms it. */
+  if (typeof sendMessage === 'function' && window.AudoraAPI?.message) {
+    sendMessage = async function durableSendMessage(text) {
+      const value = String(text || '').trim();
+      if (!value) return;
+      const chat = typeof conversations !== 'undefined'
+        ? conversations.find(item => item.id === activeChat)
+        : null;
+      if (!chat) {
+        if (typeof showToast === 'function') showToast(typeof lang !== 'undefined' && lang === 'de' ? 'Unterhaltung nicht gefunden.' : 'Conversation not found.');
+        return;
+      }
+
+      const form = document.getElementById('messageForm');
+      const input = document.getElementById('messageText');
+      const submit = form?.querySelector('button[type="submit"]');
+      if (submit) submit.disabled = true;
+      if (input) input.disabled = true;
+
+      try {
+        const saved = await window.AudoraAPI.message(activeChat, value);
+        const time = typeof formatTime === 'function'
+          ? formatTime(saved.time)
+          : new Date(saved.time || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        chat.messages.push({ me: true, de: saved.text || value, en: saved.text || value, time, server: true, id: saved.id });
+        chat.preview = { de: saved.text || value, en: saved.text || value };
+        if (typeof renderConversations === 'function') renderConversations();
+        if (typeof renderChat === 'function') renderChat();
+        if (typeof showToast === 'function') {
+          let message = typeof lang !== 'undefined' && lang === 'de' ? 'Nachricht gesendet.' : 'Message sent.';
+          try { if (typeof t === 'function') message = t('toast.message'); } catch (_e) {}
+          showToast(message);
+        }
+      } catch (error) {
+        console.error('[Audora message persistence]', error);
+        if (typeof showToast === 'function') showToast(typeof lang !== 'undefined' && lang === 'de' ? 'Nachricht konnte nicht gesendet werden.' : 'Message could not be sent.');
+      } finally {
+        if (submit) submit.disabled = false;
+        if (input) { input.disabled = false; input.focus(); }
+      }
+    };
+  }
 })();
