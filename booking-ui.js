@@ -7,6 +7,35 @@
   function open(html){const m=modal();if(!m)return;body().innerHTML=html;document.getElementById('functionalContent')?.classList.remove('wide');m.classList.add('open');m.setAttribute('aria-hidden','false')}
   function close(){const m=modal();if(m){m.classList.remove('open');m.setAttribute('aria-hidden','true')}}
 
+  /* Empty inbox must be a valid state for a new account. */
+  if(typeof renderChat==='function'){
+    const originalRenderChat=renderChat;
+    renderChat=function(){
+      if(typeof conversations!=='undefined' && !conversations.length){
+        const header=document.getElementById('chatHeader');
+        const messages=document.getElementById('messages');
+        if(header)header.innerHTML=`<span><strong>${langText('Noch keine Unterhaltung','No conversation yet')}</strong><small>${langText('Öffne ein Studio oder Creator-Profil und sende eine Nachricht.','Open a studio or creator profile and send a message.')}</small></span>`;
+        if(messages)messages.innerHTML=`<div class="provider-empty">${langText('Deine Nachrichten erscheinen hier.','Your messages will appear here.')}</div>`;
+        return;
+      }
+      return originalRenderChat();
+    };
+  }
+
+  /* Mirror map-open state on the actual panel for accessibility/tests. */
+  document.getElementById('mapToggle')?.addEventListener('click',()=>{
+    const layout=document.getElementById('discoverLayout');
+    const panel=document.getElementById('mapPanel');
+    panel?.classList.toggle('open',!!layout?.classList.contains('map-open'));
+  });
+
+  /* A read notification should not leave an overlay blocking the app. */
+  document.addEventListener('click',e=>{
+    if(!e.target.closest('[data-notification-id]'))return;
+    const panel=document.getElementById('notificationPanel');
+    if(panel){panel.classList.remove('open');panel.setAttribute('aria-hidden','true')}
+  });
+
   window.openDirectBooking=async function(id){
     const item=(typeof listings!=='undefined'?listings:[]).find(x=>x.id===id);
     if(!item)return;
