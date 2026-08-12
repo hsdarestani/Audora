@@ -3,6 +3,70 @@
   const txt=(de,en)=>typeof lang!=='undefined'&&lang==='de'?de:en;
   const esc=v=>typeof escapeHTML==='function'?escapeHTML(v):String(v??'').replace(/[&<>"']/g,'');
 
+  /* Runtime status copy for states that were added after the original prototype translations. */
+  if(window.I18N?.de?.sessions){window.I18N.de.sessions.pending='Wartet auf Bestätigung';window.I18N.de.sessions.cancelled='Storniert'}
+  if(window.I18N?.en?.sessions){window.I18N.en.sessions.pending='Awaiting confirmation';window.I18N.en.sessions.cancelled='Cancelled'}
+  if(window.I18N?.de?.toast)window.I18N.de.toast.pending='Anfragen gesendet. Die Session wartet auf Bestätigung.';
+  if(window.I18N?.en?.toast)window.I18N.en.toast.pending='Requests sent. The session is awaiting confirmation.';
+
+  /* Builder candidates must really react to budget, not merely mention budget in the copy. */
+  if(window.AudoraAPI?.request){
+    const baseRequest=window.AudoraAPI.request.bind(window.AudoraAPI);
+    window.AudoraAPI.request=function(path,options={}){
+      if(path==='/builder/candidates/'&&options?.body&&typeof options.body==='string'){
+        try{
+          const payload=JSON.parse(options.body);
+          payload.budget=Number(document.getElementById('budgetRange')?.value||payload.budget||1000);
+          options={...options,body:JSON.stringify(payload)};
+        }catch(_e){}
+      }
+      return baseRequest(path,options);
+    };
+  }
+
+  /* Remember the real result of a builder creation so old prototype copy cannot call Pending "confirmed". */
+  let lastCreatedSessionStatus=null;
+  if(window.AudoraAPI?.createSession){
+    const baseCreateSession=window.AudoraAPI.createSession.bind(window.AudoraAPI);
+    window.AudoraAPI.createSession=async function(payload){
+      const result=await baseCreateSession(payload);
+      lastCreatedSessionStatus=result?.status||null;
+      return result;
+    };
+  }
+  if(typeof showToast==='function'){
+    const baseShowToast=showToast;
+    showToast=function(message){
+      if(lastCreatedSessionStatus==='pending'){
+        let bookedMessage='';try{bookedMessage=typeof t==='function'?t('toast.booked'):''}catch(_e){}
+        if(!bookedMessage||message===bookedMessage||/Session (bestätigt|confirmed)/i.test(String(message||''))){
+          message=txt('Anfragen gesendet. Die Session wartet auf Bestätigung.','Requests sent. The session is awaiting confirmation.');
+          lastCreatedSessionStatus=null;
+        }
+      }else if(lastCreatedSessionStatus==='confirmed'){
+        lastCreatedSessionStatus=null;
+      }
+      return baseShowToast(message);
+    };
+  }
+
+  function selectedBuilderItems(){
+    const state=window.AudoraBuilderSelection;if(!state)return [];
+    const rows=[];
+    const studio=(state.studioCandidates||[]).find(x=>x.id===state.studioId);if(studio)rows.push(studio);
+    for(const role of Object.keys(state.selectedTeamByRole||{})){
+      const id=state.selectedTeamByRole[role];if(!id)continue;
+      const item=(state.candidateRoles?.[role]||[]).find(x=>x.id===id);if(item)rows.push(item);
+    }
+    return rows;
+  }
+  function syncBuilderActionTruth(){
+    const button=document.getElementById('builderNext');const span=button?.querySelector('span');if(!span)return;
+    const rows=selectedBuilderItems();
+    const requiresRequest=rows.some(item=>item.instant===false);
+    span.textContent=requiresRequest?txt('Anfragen senden','Send requests'):txt('Session bestätigen','Confirm session');
+  }
+
   /* Reviews: never let a provider review their own listing; show booking verification honestly. */
   if(typeof openListing==='function'&&window.AudoraAPI){
     const previousOpenListing=openListing;
@@ -40,11 +104,11 @@
         const data=await window.AudoraAPI.availability(id);
         const form=document.getElementById('availabilityForm');if(!form)return;
         form.querySelector('.availability-rule-note')?.remove();
-        const hasOpen=(data.slots||[]).some(slot=>slot.available);
+        const hasOpen=(data.slots||[]).some(slot=>slot.available&&new Date(slot.end)>new Date());
         const note=document.createElement('div');note.className='logic-note availability-rule-note';
         note.innerHTML=hasOpen
-          ? `<strong>${txt('Open-window-Modus aktiv','Open-window mode is active')}</strong><small>${txt('Weil mindestens ein freies Zeitfenster definiert ist, sind nur als „Frei“ markierte Zeiträume buchbar. Blockierte Zeiträume bleiben immer gesperrt.','Because at least one open window exists, only time inside windows marked “Open” can be booked. Blocked windows always stay unavailable.')}</small>`
-          : `<strong>${txt('Standard: grundsätzlich verfügbar','Default: generally available')}</strong><small>${txt('Solange kein „Frei“-Fenster angelegt ist, ist der Kalender grundsätzlich buchbar und nur „Blockiert“-Fenster sowie bestehende Buchungen sperren Zeiten.','Until you add an “Open” window, the calendar is generally bookable and only blocked windows or existing bookings make time unavailable.')}</small>`;
+          ? `<strong>${txt('Open-window-Modus aktiv','Open-window mode is active')}</strong><small>${txt('Weil mindestens ein zukünftiges freies Zeitfenster definiert ist, sind nur als „Frei“ markierte Zeiträume buchbar. Abgelaufene Fenster beeinflussen die Zukunft nicht.','Because at least one future open window exists, only time inside windows marked “Open” can be booked. Expired windows do not affect future availability.')}</small>`
+          : `<strong>${txt('Standard: grundsätzlich verfügbar','Default: generally available')}</strong><small>${txt('Solange kein zukünftiges „Frei“-Fenster angelegt ist, ist der Kalender grundsätzlich buchbar und nur „Blockiert“-Fenster sowie bestehende Buchungen sperren Zeiten.','Until you add a future “Open” window, the calendar is generally bookable and only blocked windows or existing bookings make time unavailable.')}</small>`;
         form.prepend(note);
       }catch(err){console.error('[Audora availability rules]',err)}
     },180);
@@ -58,7 +122,7 @@
       try{
         const data=await window.AudoraAPI.availability(id);
         const form=document.getElementById('directBookingForm');if(!form)return;
-        const openSlots=(data.slots||[]).filter(slot=>slot.available);
+        const openSlots=(data.slots||[]).filter(slot=>slot.available&&new Date(slot.end)>new Date());
         if(!openSlots.length)return;
         const wrap=document.createElement('div');wrap.className='available-window-picker';
         wrap.innerHTML=`<span>${txt('VERFÜGBARE ZEITFENSTER','AVAILABLE WINDOWS')}</span><small>${txt('Wähle ein freies Fenster oder gib darunter eine Zeit innerhalb eines Fensters ein.','Choose an open window or enter a time inside one below.')}</small><div>${openSlots.slice(0,10).map(slot=>{const s=new Date(slot.start),e=new Date(slot.end);const label=`${s.toLocaleDateString(typeof lang!=='undefined'&&lang==='de'?'de-DE':'en-GB',{day:'2-digit',month:'short'})} · ${s.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}–${e.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`;return `<button type="button" data-open-window-start="${esc(slot.start)}" data-open-window-end="${esc(slot.end)}">${esc(label)}</button>`}).join('')}</div>`;
@@ -95,13 +159,19 @@
       fit.textContent=txt(`Verfügbarkeit geprüft · €${delta} über deinem Budget`,`Availability checked · €${delta} over your budget`);
       fit.classList.add('over-budget');
     }
+    syncBuilderActionTruth();
   }
   const summaryTotal=document.getElementById('summaryTotal');
   if(summaryTotal)new MutationObserver(syncBudgetTruth).observe(summaryTotal,{childList:true,characterData:true,subtree:true});
-  document.getElementById('budgetRange')?.addEventListener('input',syncBudgetTruth);
+  let budgetTimer=null;
+  document.getElementById('budgetRange')?.addEventListener('input',()=>{
+    syncBudgetTruth();clearTimeout(budgetTimer);budgetTimer=setTimeout(()=>{
+      if(typeof builderStep!=='undefined'&&builderStep===3&&typeof window.renderAudoraBuilderChoices==='function')window.renderAudoraBuilderChoices(true);
+    },240);
+  });
   document.addEventListener('click',event=>{
-    if(event.target.closest('[data-builder-studio],[data-builder-role-choice]'))setTimeout(syncBudgetTruth,0);
-    if(event.target.closest('[data-lang]'))setTimeout(syncBudgetTruth,30);
+    if(event.target.closest('[data-builder-studio],[data-builder-role-choice]'))setTimeout(()=>{syncBudgetTruth();syncBuilderActionTruth()},0);
+    if(event.target.closest('[data-lang]'))setTimeout(()=>{syncBudgetTruth();syncBuilderActionTruth()},30);
   });
 
   /* Provider queue: pending requests need an actual accept/decline flow. */
@@ -149,7 +219,7 @@
     }
     if(event.target.closest('#providerSwitch,#profileProvider,[data-route="profile"]'))setTimeout(renderProviderBookingQueue,220);
   });
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{syncBudgetTruth();renderProviderBookingQueue()},500));
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{syncBudgetTruth();syncBuilderActionTruth();renderProviderBookingQueue()},500));
 
   const style=document.createElement('style');style.textContent=`
     .logic-note{display:grid;gap:4px;padding:11px 12px;border:1px solid rgba(255,255,255,.09);border-radius:11px;background:rgba(255,255,255,.025);margin:0 0 11px;color:var(--muted)}.logic-note strong{font-size:12px;color:var(--text)}.logic-note small{font-size:10px;line-height:1.55}.logic-note.verified{border-color:rgba(99,232,187,.25);background:rgba(99,232,187,.045)}.logic-note.verified strong,.verified-review{color:var(--mint)}.verified-review{font-size:9px;margin-left:auto}.available-window-picker{display:grid;gap:7px;padding:11px;border:1px solid rgba(150,92,255,.18);background:rgba(150,92,255,.035);border-radius:12px}.available-window-picker>span{font-size:10px;font-weight:800;letter-spacing:.08em}.available-window-picker>small{font-size:10px;color:var(--muted)}.available-window-picker>div{display:flex;flex-wrap:wrap;gap:6px}.available-window-picker button{border:1px solid var(--line);background:rgba(255,255,255,.035);color:var(--text);border-radius:9px;padding:8px 9px;font-size:10px;cursor:pointer}.available-window-picker button:hover,.available-window-picker button.selected{border-color:rgba(99,232,187,.42);background:rgba(99,232,187,.08)}[data-i18n="build.fitText"].over-budget{color:#ffb36b}.provider-booking-queue{margin-top:18px;padding-top:18px;border-top:1px solid var(--line);display:grid;gap:12px}.provider-queue-head small{font-size:10px;color:var(--purple-2);font-weight:800;letter-spacing:.1em}.provider-queue-head h3{font-size:18px;margin-top:4px}.provider-request-list{display:grid;gap:8px}.provider-request-row{display:grid;grid-template-columns:46px minmax(0,1fr) auto;align-items:center;gap:11px;padding:10px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.018)}.provider-request-row>img{width:46px;height:46px;border-radius:10px;object-fit:cover;background:rgba(255,255,255,.04)}.provider-request-row span{min-width:0}.provider-request-row small{display:block;font-size:10px;color:var(--muted)}.provider-request-row strong{display:block;font-size:13px;margin-top:2px}.provider-request-row p{font-size:11px;color:var(--muted);margin-top:2px}.provider-request-actions{display:flex;gap:6px;align-items:center}.provider-request-actions button{padding:8px 10px;font-size:10px}.request-status{font-size:10px;border:1px solid var(--line);border-radius:999px;padding:6px 8px}.request-status.completed{color:var(--mint)}.request-status.cancelled{color:#ff9aac}@media(max-width:700px){.provider-request-row{grid-template-columns:42px minmax(0,1fr)}.provider-request-actions{grid-column:1/-1}.provider-request-actions button{flex:1}}
