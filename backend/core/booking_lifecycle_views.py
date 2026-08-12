@@ -37,12 +37,9 @@ def _resolve_cancelled_session_booking(booking_id, actor_id):
         if not booking or booking.status != "cancelled" or not booking.session_id:
             return
 
-        session = (
-            SessionProject.objects.select_for_update()
-            .select_related("studio")
-            .prefetch_related("team")
-            .get(pk=booking.session_id)
-        )
+        # Lock only the SessionProject row. `studio` is nullable, so joining it
+        # into a FOR UPDATE query causes PostgreSQL to reject the outer join.
+        session = SessionProject.objects.select_for_update().get(pk=booking.session_id)
 
         if _role_is_required(session, booking):
             # A required room/role was declined: the current package can no
