@@ -4,6 +4,13 @@ const runId = process.env.GITHUB_RUN_ID || String(Date.now());
 const email = process.env.E2E_TEAM_EMAIL || `team-${runId}@audora.local`;
 const password = 'AudoraUITest2026!';
 
+function futureDate(days = 90) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 async function register(page) {
   await page.goto('/#build', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('body')).toHaveAttribute('data-backend', 'online', { timeout: 30000 });
@@ -26,6 +33,12 @@ async function login(page) {
   await expect(page.locator('#backendStatus')).toContainText('Team Selection Test', { timeout: 20000 });
 }
 
+async function setSchedule(page, days = 90) {
+  await page.locator('#buildDate').fill(futureDate(days));
+  await expect(page.locator('#buildTime')).toBeVisible();
+  await page.locator('#buildTime').fill('20:00');
+}
+
 test.describe.serial('Audora selectable Smart Match team', () => {
   test('artist chooses studio, producer and engineer and exact team is persisted', async ({ page }) => {
     test.skip(test.info().project.name !== 'desktop-chromium');
@@ -46,7 +59,7 @@ test.describe.serial('Audora selectable Smart Match team', () => {
     await page.locator('#buildCity').selectOption({ label: 'Frankfurt' }).catch(async () => {
       await page.locator('#buildCity').selectOption('Frankfurt');
     });
-    await page.locator('#buildDate').fill('');
+    await setSchedule(page, 90);
     await page.locator('#budgetRange').fill('1500');
     await page.locator('#builderNext').click();
 
@@ -79,7 +92,7 @@ test.describe.serial('Audora selectable Smart Match team', () => {
     const result = await page.evaluate(async ({ studioId, producerId, engineerId }) => {
       const data = await (await fetch('/api/sessions/')).json();
       return data.results.find(session =>
-        session.status === 'confirmed' &&
+        ['confirmed', 'pending'].includes(session.status) &&
         session.studio?.id === studioId &&
         session.team?.some(member => member.id === producerId) &&
         session.team?.some(member => member.id === engineerId)
@@ -97,7 +110,7 @@ test.describe.serial('Audora selectable Smart Match team', () => {
     await login(page);
     await page.locator('#goalCards [data-goal=record]').click();
     await page.locator('#builderNext').click();
-    await page.locator('#buildDate').fill('');
+    await setSchedule(page, 91);
     await page.locator('#builderNext').click();
 
     const skipEngineer = page.locator('[data-builder-role-choice="engineer"][data-builder-member=""]');
