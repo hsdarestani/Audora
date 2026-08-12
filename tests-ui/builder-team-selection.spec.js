@@ -73,6 +73,13 @@ test.describe.serial('Audora selectable Smart Match team', () => {
     await studios.nth(1).click();
     await expect(page.locator(`[data-builder-studio="${selectedStudioId}"]`)).toHaveClass(/selected/);
 
+    const selectedStudioCity = await page.evaluate(async studioId => {
+      const response = await fetch(`/api/listings/${encodeURIComponent(studioId)}/`);
+      const studio = await response.json();
+      return studio.city;
+    }, selectedStudioId);
+    await expect(page.locator('#summaryPlace')).toHaveText(selectedStudioCity);
+
     const producers = page.locator('[data-builder-role-choice="producer"][data-builder-member]:not([data-builder-member=""])');
     await expect(producers.nth(1)).toBeVisible({ timeout: 15000 });
     expect(await producers.count()).toBeGreaterThanOrEqual(2);
@@ -102,7 +109,7 @@ test.describe.serial('Audora selectable Smart Match team', () => {
     }, { studioId: selectedStudioId, producerId: selectedProducerId, engineerId: selectedEngineerId });
 
     expect(result).toBeTruthy();
-    expect(result.city).toBe('Frankfurt');
+    expect(result.city).toBe(selectedStudioCity);
     expect(pageErrors).toEqual([]);
     expect(apiErrors).toEqual([]);
   });
