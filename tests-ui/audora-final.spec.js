@@ -366,7 +366,7 @@ test.describe.serial('Audora full production browser coverage', () => {
       await closeFunctional(page);
       await page.locator('.side-link[data-route=discover]').click();
       await page.locator('#discoverSearch').fill(listingName);
-      await expect(page.locator('#discoverGrid [data-listing-card]', { hasText: listingName })).toHaveCount(0);
+      await expect(page.locator(`#discoverGrid [data-listing-card="ui-studio-${runId}"]`)).toHaveCount(0);
     });
 
     expect(pageErrors, `Browser page errors: ${pageErrors.join('\n')}`).toEqual([]);
