@@ -9,6 +9,9 @@ on:
       - 'api.js'
       - 'booking-ui.js'
       - 'builder-team-selection.js'
+      - 'builder-time.js'
+      - 'logic-ui.js'
+      - 'live-data.js'
       - 'styles.css'
       - 'functionality.css'
       - 'mobile-polish.css'
@@ -45,16 +48,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 36); do
+          for i in $(seq 1 48); do
             curl -fsS --max-time 10 "$AUDORA_BASE_URL/api/health/" -o /tmp/audora-health.json || true
             curl -fsS --max-time 10 "$AUDORA_BASE_URL/" -o /tmp/audora-home.html || true
             if grep -q '"ok": true' /tmp/audora-health.json 2>/dev/null && \
                grep -q 'booking-ui.js' /tmp/audora-home.html 2>/dev/null && \
-               grep -q 'builder-team-selection.js' /tmp/audora-home.html 2>/dev/null; then
+               grep -q 'builder-team-selection.js' /tmp/audora-home.html 2>/dev/null && \
+               grep -q 'builder-time.js' /tmp/audora-home.html 2>/dev/null && \
+               grep -q 'logic-ui.js' /tmp/audora-home.html 2>/dev/null && \
+               grep -q 'live-data.js' /tmp/audora-home.html 2>/dev/null; then
               echo 'Production is ready.'
               exit 0
             fi
-            echo "Waiting for production ($i/36)..."
+            echo "Waiting for production ($i/48)..."
             sleep 5
           done
           echo 'Production did not become ready.'
