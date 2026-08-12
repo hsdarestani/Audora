@@ -22,7 +22,7 @@ urlpatterns = [
     path("sessions/<uuid:session_id>/files/", api_v2.session_file_api),
     path("tasks/<int:task_id>/", api_v2.task_api),
     path("bookings/", marketplace_views.bookings_api),
-    path("bookings/<uuid:booking_id>/", logic_views.booking_detail_api),
+    path("bookings/<uuid:booking_id>/", marketplace_views.booking_detail_api),
     path("conversations/", api_v2.conversations_api),
     path("conversations/listing/<slug:slug>/", api_v2.conversation_for_listing_api),
     path("conversations/<uuid:conversation_id>/", api_v2.conversation_api),
