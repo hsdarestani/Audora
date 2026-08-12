@@ -2,6 +2,7 @@
 (() => {
   let refreshPromise = null;
   let lastRefresh = 0;
+  let builderRequestedCity = null;
 
   async function refreshMarketplace(force = false) {
     if (!window.AudoraAPI?.listings || typeof listings === 'undefined') return;
@@ -30,6 +31,28 @@
   }
 
   window.AudoraRefreshMarketplace = refreshMarketplace;
+
+  /* Builder Match and final persistence must use the exact same requested city. */
+  if (window.AudoraAPI?.request) {
+    const baseRequest = window.AudoraAPI.request.bind(window.AudoraAPI);
+    window.AudoraAPI.request = function cityAwareRequest(path, options = {}) {
+      if (path === '/builder/candidates/' && typeof options?.body === 'string') {
+        try {
+          const payload = JSON.parse(options.body);
+          builderRequestedCity = String(payload.city || document.getElementById('buildCity')?.value || 'Berlin');
+        } catch (_e) {}
+      }
+      return baseRequest(path, options);
+    };
+  }
+
+  if (window.AudoraAPI?.createSession) {
+    const baseCreateSession = window.AudoraAPI.createSession.bind(window.AudoraAPI);
+    window.AudoraAPI.createSession = function cityAwareCreateSession(payload = {}) {
+      const city = builderRequestedCity || document.getElementById('buildCity')?.value || payload.city || 'Berlin';
+      return baseCreateSession({ ...payload, city });
+    };
+  }
 
   /* Provider mutations must update the customer marketplace immediately after the server confirms them. */
   if (window.AudoraAPI?.deleteProviderListing) {
