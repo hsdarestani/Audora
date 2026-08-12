@@ -2,6 +2,13 @@
 (() => {
   const text=(de,en)=>typeof lang!=='undefined'&&lang==='de'?de:en;
   const esc=v=>typeof escapeHTML==='function'?escapeHTML(v):String(v??'').replace(/[&<>"']/g,'');
+
+  // This is a live backend flow now, not a fake/demo-only booking action.
+  if(window.I18N?.de?.build)window.I18N.de.build.finish='Session bestätigen';
+  if(window.I18N?.en?.build)window.I18N.en.build.finish='Confirm session';
+  if(window.I18N?.de?.toast)window.I18N.de.toast.booked='Session bestätigt und gespeichert.';
+  if(window.I18N?.en?.toast)window.I18N.en.toast.booked='Session confirmed and saved.';
+
   const state=window.AudoraBuilderSelection||(window.AudoraBuilderSelection={studioId:null,studioCandidates:[],team:[]});
   state.selectedTeamByRole=state.selectedTeamByRole||{};
 
