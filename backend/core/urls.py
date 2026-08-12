@@ -1,5 +1,5 @@
 from django.urls import path
-from . import api_v2, builder_api, frontend_compat, provider_views, logic_views, marketplace_views
+from . import api_v2, audit_views, frontend_compat, provider_views, logic_views, marketplace_views
 
 urlpatterns = [
     path("health/", api_v2.health),
@@ -14,17 +14,17 @@ urlpatterns = [
     path("availability/<int:slot_id>/", api_v2.availability_delete_api),
     path("favorites/<slug:slug>/", api_v2.favorite_api),
     path("match/", api_v2.smart_match_api),
-    path("builder/candidates/", logic_views.builder_candidates_api),
+    path("builder/candidates/", audit_views.builder_candidates_api),
     path("sessions/", api_v2.sessions_api),
-    path("sessions/selected/", builder_api.selected_session_api),
+    path("sessions/selected/", audit_views.selected_session_api),
     path("sessions/<uuid:session_id>/", logic_views.session_detail_api),
     path("sessions/<uuid:session_id>/cancel/", api_v2.cancel_session_api),
     path("sessions/<uuid:session_id>/files/", api_v2.session_file_api),
     path("tasks/<int:task_id>/", api_v2.task_api),
     path("bookings/", marketplace_views.bookings_api),
-    path("bookings/<uuid:booking_id>/", marketplace_views.booking_detail_api),
+    path("bookings/<uuid:booking_id>/", audit_views.booking_detail_api),
     path("conversations/", api_v2.conversations_api),
-    path("conversations/listing/<slug:slug>/", api_v2.conversation_for_listing_api),
+    path("conversations/listing/<slug:slug>/", audit_views.conversation_for_listing_api),
     path("conversations/<uuid:conversation_id>/", api_v2.conversation_api),
     path("notifications/", api_v2.notifications_api),
     path("provider/dashboard/", logic_views.provider_dashboard_api),
