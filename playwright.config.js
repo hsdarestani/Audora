@@ -2,7 +2,7 @@ const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './tests-ui',
-  testMatch: 'audora-final.spec.js',
+  testMatch: ['audora-final.spec.js', 'builder-team-selection.spec.js'],
   timeout: 120000,
   expect: { timeout: 12000 },
   retries: 0,
