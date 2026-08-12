@@ -7,6 +7,96 @@
   function open(html){const m=modal();if(!m)return;body().innerHTML=html;document.getElementById('functionalContent')?.classList.remove('wide');m.classList.add('open');m.setAttribute('aria-hidden','false')}
   function close(){const m=modal();if(m){m.classList.remove('open');m.setAttribute('aria-hidden','true')}}
 
+  /* Runtime wording for lifecycle states introduced by the real backend. */
+  if(window.I18N?.de?.sessions)window.I18N.de.sessions.pending='Ausstehend';
+  if(window.I18N?.en?.sessions)window.I18N.en.sessions.pending='Pending';
+
+  /* Builder confirmation is time-bound. Do not let a real booking flow enter Match without a date. */
+  function localISODate(date=new Date()){
+    const local=new Date(date.getTime()-date.getTimezoneOffset()*60000);
+    return local.toISOString().slice(0,10);
+  }
+  function initBuilderDate(){const input=document.getElementById('buildDate');if(input){input.min=localISODate();input.required=true}}
+  initBuilderDate();
+  document.addEventListener('DOMContentLoaded',initBuilderDate);
+  document.addEventListener('click',event=>{
+    const next=event.target.closest('#builderNext');
+    const directStep3=event.target.closest('[data-builder-step="3"]');
+    const shouldValidate=(next&&typeof builderStep!=='undefined'&&builderStep===2)||directStep3;
+    if(!shouldValidate)return;
+    const input=document.getElementById('buildDate');
+    const today=localISODate();
+    if(input?.value&&input.value>=today)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    input?.focus();input?.classList.add('logic-invalid');
+    if(input)input.setAttribute('aria-invalid','true');
+    showToast?.(input?.value?langText('Bitte wähle ein zukünftiges Datum.','Please choose a future date.'):langText('Bitte wähle zuerst ein Datum.','Please choose a date first.'));
+  },true);
+  document.getElementById('buildDate')?.addEventListener('change',event=>{event.target.classList.remove('logic-invalid');event.target.removeAttribute('aria-invalid')});
+
+  /* Home must reflect the signed-in/demo user's real server data, never static showcase data. */
+  function liveStatusLabel(status){
+    const map={draft:['Entwurf','Draft'],pending:['Ausstehend','Pending'],confirmed:['Bestätigt','Confirmed'],completed:['Abgeschlossen','Completed'],cancelled:['Storniert','Cancelled']};
+    return langText(...(map[status]||[status||'',status||'']));
+  }
+  async function syncLiveHome(){
+    const home=document.querySelector('[data-view="home"]');if(!home||typeof sessions==='undefined')return;
+    const serverSessions=sessions.filter(s=>s?.server);
+    const upcoming=serverSessions.find(s=>s.state==='upcoming')||null;
+    const spotlight=home.querySelector('.spotlight-card');
+    const project=home.querySelector('.home-lower-grid .insight-card:first-child');
+    const activity=home.querySelector('.activity-list');
+    const navCount=document.querySelector('.side-link[data-route="sessions"] .nav-count');
+    if(navCount)navCount.textContent=String(serverSessions.length);
+
+    if(spotlight){
+      const title=spotlight.querySelector('.spotlight-copy h2');
+      const copy=spotlight.querySelector('.spotlight-copy p');
+      const team=spotlight.querySelector('.spotlight-team');
+      const primary=spotlight.querySelector('.spotlight-actions .primary-btn');
+      const art=spotlight.querySelector('.spotlight-art img');
+      const dateBadge=spotlight.querySelector('.spotlight-date');
+      if(upcoming){
+        title?.removeAttribute('data-i18n-html');
+        if(title)title.innerHTML=`${esc(upcoming.title)}<br><span>${esc(upcoming.date?.[typeof lang!=='undefined'?lang:'de']||'')} · ${esc(upcoming.place||'')}</span>`;
+        if(copy)copy.textContent=upcoming.status==='pending'?langText('Ein oder mehrere Anbieter müssen deine Anfrage noch bestätigen. Im Session Room siehst du den aktuellen Stand.','One or more providers still need to confirm your request. The Session Room shows the live status.'):langText('Deine aktuelle Session, Team-Infos, Aufgaben und Dateien liegen im gemeinsamen Session Room.','Your current session, team details, tasks and files live in the shared Session Room.');
+        if(team){
+          const members=(upcoming.team||[]).map(id=>(typeof listings!=='undefined'?listings:[]).find(x=>x.id===id)).filter(Boolean).slice(0,3);
+          team.innerHTML=`${members.map(member=>`<span><img src="${esc(member.image||'')}" alt="${esc(member.name||'')}"></span>`).join('')}<small>${esc(upcoming.place||'')} ${members.length?`+ ${members.length}`:''}</small>`;
+        }
+        if(primary){primary.removeAttribute('data-route');primary.dataset.openSession=upcoming.id;const span=primary.querySelector('span');if(span)span.textContent=langText('Session Room öffnen','Open Session Room')}
+        if(art&&upcoming.image)art.src=upcoming.image;
+        if(dateBadge)dateBadge.style.display='none';
+      }else{
+        title?.removeAttribute('data-i18n-html');if(title)title.innerHTML=langText('Noch keine Session geplant.<br><span>Starte dein erstes Match.</span>','No session planned yet.<br><span>Start your first match.</span>');
+        if(copy)copy.textContent=langText('Wähle Studio, Producer oder Engineer und baue eine Session, die wirklich zu deinem Termin und Budget passt.','Choose a studio, producer or engineer and build a session that actually fits your time and budget.');
+        if(team)team.innerHTML=`<small>${langText('Noch kein Team ausgewählt','No team selected yet')}</small>`;
+        if(primary){delete primary.dataset.openSession;primary.dataset.route='build';const span=primary.querySelector('span');if(span)span.textContent=langText('Session bauen','Build a session')}
+        if(dateBadge)dateBadge.style.display='none';
+      }
+    }
+
+    if(project){
+      if(upcoming){
+        project.innerHTML=`<div class="section-title compact"><div><small>${langText('DEINE NÄCHSTE SESSION','YOUR NEXT SESSION')}</small><h3>${esc(upcoming.title)}</h3></div><span class="session-status ${esc(upcoming.status||'')}">${esc(liveStatusLabel(upcoming.status))}</span></div><div class="live-home-project"><div><small>${langText('TERMIN','DATE')}</small><strong>${esc(upcoming.date?.[typeof lang!=='undefined'?lang:'de']||'—')}</strong></div><div><small>${langText('ORT','PLACE')}</small><strong>${esc(upcoming.place||'—')}</strong></div><div><small>${langText('GESAMT','TOTAL')}</small><strong>€${Math.round(Number(upcoming.total||0))}</strong></div></div><button class="ghost-btn full" data-open-session="${esc(upcoming.id)}">${langText('Session öffnen','Open session')}</button>`;
+      }else{
+        project.innerHTML=`<div class="section-title compact"><div><small>${langText('DEIN PROJEKT','YOUR PROJECT')}</small><h3>${langText('Noch kein aktives Projekt','No active project yet')}</h3></div></div><div class="provider-empty">${langText('Sobald du eine Session baust oder buchst, erscheint sie hier mit echtem Status und Termin.','As soon as you build or book a session, it appears here with its real status and date.')}</div><button class="ghost-btn full" data-route="build">${langText('Erste Session bauen','Build first session')}</button>`;
+      }
+    }
+
+    if(activity&&window.AudoraAPI?.notifications){
+      try{
+        const data=await window.AudoraAPI.notifications();const rows=Array.isArray(data.results)?data.results.slice(0,3):[];
+        activity.innerHTML=rows.length?rows.map(row=>`<div><span class="activity-icon ${row.read?'':'purple'}">${row.read?'✓':'•'}</span><p><strong>${esc(row.title?.[typeof lang!=='undefined'?lang:'de']||'')}</strong><small>${esc(row.text?.[typeof lang!=='undefined'?lang:'de']||'')}</small></p></div>`).join(''):`<div class="provider-empty">${langText('Noch keine Aktivität.','No activity yet.')}</div>`;
+      }catch(err){console.error('[Audora home activity]',err)}
+    }
+  }
+  if(typeof renderHome==='function'){
+    const originalHome=renderHome;
+    renderHome=function(){const result=originalHome();setTimeout(syncLiveHome,0);return result};
+  }
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(syncLiveHome,450));
+
   /* Empty Inbox is a valid state. */
   if(typeof renderChat==='function'){
     const original=renderChat;
@@ -93,7 +183,10 @@
       msg.textContent=pending?langText(`Anfrage gesendet · €${Math.round(result.total)}`,`Request sent · €${Math.round(result.total)}`):langText(`Bestätigt · €${Math.round(result.total)}`,`Confirmed · €${Math.round(result.total)}`);msg.classList.add('success');
       showToast?.(pending?langText('Buchungsanfrage gesendet.','Booking request sent.'):langText('Buchung bestätigt.','Booking confirmed.'));
       setTimeout(close,850);
-    }catch(err){msg.textContent=err.code==='slot_just_booked'?langText('Dieser Slot ist bereits vergeben. Bitte wähle eine andere Zeit.','That slot is already booked. Choose another time.'):langText('Buchung konnte nicht abgeschlossen werden.','Booking could not be completed.');msg.classList.add('error')}
+    }catch(err){msg.textContent=err.code==='slot_just_booked'?langText('Dieser Slot ist bereits vergeben. Bitte wähle eine andere Zeit.','That slot is already booked. Choose another time.'):err.code==='cannot_book_own_listing'?langText('Du kannst dein eigenes Angebot nicht buchen.','You cannot book your own listing.'):langText('Buchung konnte nicht abgeschlossen werden.','Booking could not be completed.');msg.classList.add('error')}
     finally{button.disabled=false}
   },true);
+
+  const homeStyle=document.createElement('style');homeStyle.textContent=`.logic-invalid{outline:2px solid rgba(255,118,140,.65)!important;outline-offset:2px}.live-home-project{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.live-home-project>div{padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02);min-width:0}.live-home-project small{display:block;font-size:9px;color:var(--muted);margin-bottom:4px}.live-home-project strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis}.session-status{font-size:9px;border:1px solid var(--line);border-radius:999px;padding:6px 8px;color:var(--muted)}.session-status.confirmed{color:var(--mint);border-color:rgba(99,232,187,.24)}.session-status.pending{color:#ffc77a;border-color:rgba(255,199,122,.25)}@media(max-width:520px){.live-home-project{grid-template-columns:1fr}.spotlight-team:has(>small:only-child){min-height:24px}}`;
+  document.head.appendChild(homeStyle);
 })();
