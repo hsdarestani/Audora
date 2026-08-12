@@ -6,18 +6,8 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from . import api_v2
+from . import api_v2, logic_views
 from .models import Booking, Listing, Notification, SessionProject, SessionTask
-
-
-def _wanted_categories(goal):
-    if goal in {"record", "produce"}:
-        return ["producer", "engineer"]
-    if goal == "mix":
-        return ["engineer"]
-    if goal == "write":
-        return ["songwriter"]
-    return []
 
 
 def _auto_candidate(category, city, start, duration, genres):
@@ -25,8 +15,6 @@ def _auto_candidate(category, city, start, duration, genres):
     candidates = api_v2.available_candidates(local_qs, category, start, duration, genres)
     if candidates:
         return candidates[0]
-    # The UI intentionally falls back to strong remote/out-of-city matches if the
-    # selected city has no option. Keep the backend consistent with that behavior.
     global_qs = Listing.objects.filter(active=True)
     candidates = api_v2.available_candidates(global_qs, category, start, duration, genres)
     return candidates[0] if candidates else None
@@ -35,15 +23,11 @@ def _auto_candidate(category, city, start, duration, genres):
 @csrf_exempt
 @require_http_methods(["POST"])
 def selected_session_api(request):
-    """Create a builder session while honoring the user's explicit studio/team choices."""
     user = api_v2.ensure_user(request)
     data = api_v2.json_body(request)
 
-    studio_slug = str(data.get("studio_id") or "").strip()
-    if not studio_slug:
-        return JsonResponse({"error": "studio_id_required"}, status=400)
-
     goal = str(data.get("goal") or "record")
+    rules = logic_views.goal_rules(goal)
     city = str(data.get("city") or "Berlin").strip()[:100]
     genres = data.get("genres") if isinstance(data.get("genres"), list) else []
     budget = max(Decimal("0"), api_v2.decimal_value(data.get("budget"), "1000"))
@@ -55,13 +39,19 @@ def selected_session_api(request):
     if start and start < timezone.now():
         return JsonResponse({"error": "start_in_past"}, status=400)
 
-    studio = Listing.objects.filter(slug=studio_slug, active=True, category="studio").first()
-    if not studio:
-        return JsonResponse({"error": "selected_studio_not_found"}, status=404)
-    if start and api_v2.booking_conflicts(studio, start, duration):
-        return JsonResponse({"error": "slot_just_booked", "listing": studio.slug}, status=409)
+    studio_slug = str(data.get("studio_id") or "").strip()
+    studio = None
+    if studio_slug:
+        studio = Listing.objects.filter(slug=studio_slug, active=True, category="studio").first()
+        if not studio:
+            return JsonResponse({"error": "selected_studio_not_found"}, status=404)
+        if start and api_v2.booking_conflicts(studio, start, duration):
+            return JsonResponse({"error": "slot_just_booked", "listing": studio.slug}, status=409)
+    elif rules["studio_required"]:
+        return JsonResponse({"error": "studio_id_required"}, status=400)
 
-    wanted = _wanted_categories(goal)
+    wanted = rules["roles"]
+    required_roles = set(rules["required_roles"])
     explicit_team = isinstance(data.get("team_ids"), list)
     team = []
 
@@ -86,32 +76,40 @@ def selected_session_api(request):
                 return JsonResponse({"error": "slot_just_booked", "listing": item.slug}, status=409)
             seen_categories.add(item.category)
             team.append(item)
+        missing = required_roles - seen_categories
+        if missing:
+            return JsonResponse({"error": "required_team_role_missing", "roles": sorted(missing)}, status=409)
     else:
+        seen_categories = set()
         for category in wanted:
             candidate = _auto_candidate(category, city, start, duration, genres)
             if candidate:
                 team.append(candidate)
+                seen_categories.add(category)
+        missing = required_roles - seen_categories
+        if missing:
+            return JsonResponse({"error": "no_available_required_role", "roles": sorted(missing)}, status=409)
 
-    total = studio.price * duration + sum((x.price for x in team), Decimal("0"))
+    if not studio and not team:
+        return JsonResponse({"error": "empty_session_selection"}, status=400)
+
+    total = (studio.price * duration if studio else Decimal("0")) + sum((item.price for item in team), Decimal("0"))
     status = data.get("status") if data.get("status") in {"draft", "confirmed"} else "confirmed"
 
     with transaction.atomic():
-        chosen = [studio] + team
+        chosen = ([studio] if studio else []) + team
         locked = {
-            x.id: x
-            for x in Listing.objects.select_for_update().filter(
-                id__in=[x.id for x in chosen], active=True
-            )
+            item.id: item
+            for item in Listing.objects.select_for_update().filter(id__in=[item.id for item in chosen], active=True)
         }
-        locked_studio = locked.get(studio.id)
-        if not locked_studio:
+        locked_studio = locked.get(studio.id) if studio else None
+        if studio and not locked_studio:
             return JsonResponse({"error": "selected_studio_not_found"}, status=404)
-
-        selected_team = [locked[x.id] for x in team if x.id in locked]
+        selected_team = [locked[item.id] for item in team if item.id in locked]
         if len(selected_team) != len(team):
             return JsonResponse({"error": "selected_team_member_not_found"}, status=404)
 
-        selected = [locked_studio] + selected_team
+        selected = ([locked_studio] if locked_studio else []) + selected_team
         if start:
             for item in selected:
                 if api_v2.booking_conflicts(item, start, duration):
@@ -132,29 +130,11 @@ def selected_session_api(request):
             notes=str(data.get("notes") or "")[:10000],
         )
         session.team.set(selected_team)
+        setup_owner = selected_team[-1].name if selected_team else (locked_studio.name if locked_studio else user.first_name or user.username)
         SessionTask.objects.bulk_create([
-            SessionTask(
-                session=session,
-                title="References & Brief finalisieren",
-                assignee_name=user.first_name or user.username,
-                due_label="Today",
-                done=True,
-                order=1,
-            ),
-            SessionTask(
-                session=session,
-                title="Session-Dateien hochladen",
-                assignee_name=user.first_name or user.username,
-                due_label="Today",
-                order=2,
-            ),
-            SessionTask(
-                session=session,
-                title="Setup vorbereiten",
-                assignee_name=selected_team[-1].name if selected_team else "Team",
-                due_label="Session",
-                order=3,
-            ),
+            SessionTask(session=session, title="References & Brief finalisieren", assignee_name=user.first_name or user.username, due_label="Today", done=True, order=1),
+            SessionTask(session=session, title="Session-Dateien hochladen", assignee_name=user.first_name or user.username, due_label="Today", order=2),
+            SessionTask(session=session, title="Setup vorbereiten", assignee_name=setup_owner, due_label="Session", order=3),
         ])
         if status == "confirmed" and start:
             for item in selected:
@@ -175,9 +155,5 @@ def selected_session_api(request):
             text_en=f"{session.title} was saved.",
         )
 
-    session = (
-        SessionProject.objects.prefetch_related("team", "tasks", "files")
-        .select_related("studio")
-        .get(pk=session.pk)
-    )
+    session = SessionProject.objects.prefetch_related("team", "tasks", "files").select_related("studio").get(pk=session.pk)
     return JsonResponse(api_v2.session_json(session, full=True), status=201)
