@@ -90,6 +90,28 @@
     },0);
   });
 
+  /* Notifications are dynamic: bookings and sessions can create them after the initial bootstrap. */
+  async function refreshNotificationPanel(){
+    const panel=document.getElementById('notificationPanel');
+    const list=panel?.querySelector('.notification-list');
+    if(!panel||!list||!window.AudoraAPI)return;
+    try{
+      const data=await window.AudoraAPI.notifications();
+      const rows=Array.isArray(data?.results)?data.results:[];
+      if(!rows.length){
+        list.innerHTML=`<div class="provider-empty">${langText('Noch keine Benachrichtigungen.','No notifications yet.')}</div>`;
+      }else{
+        list.innerHTML=rows.map(n=>`<button data-notification-id="${n.id}"><span class="activity-icon ${n.read?'':'purple'}">${n.read?'✓':'•'}</span><p><strong>${esc(n.title?.[typeof lang!=='undefined'?lang:'de']||'')}</strong><small>${esc(n.text?.[typeof lang!=='undefined'?lang:'de']||'')}</small></p></button>`).join('');
+      }
+      const unread=rows.filter(n=>!n.read).length;
+      const badge=document.querySelector('.notification-badge');
+      if(badge){badge.textContent=String(unread);badge.style.display=unread?'grid':'none'}
+    }catch(err){
+      console.error('[Audora API]',err);
+    }
+  }
+  document.getElementById('notificationButton')?.addEventListener('click',()=>{refreshNotificationPanel()});
+
   /* A read notification should not leave an overlay blocking the app. */
   document.addEventListener('click',e=>{
     if(!e.target.closest('[data-notification-id]'))return;
