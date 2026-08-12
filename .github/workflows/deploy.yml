@@ -13,6 +13,7 @@ on:
       - 'api.js'
       - 'booking-ui.js'
       - 'builder-team-selection.js'
+      - 'logic-ui.js'
       - 'i18n.js'
       - 'requirements.txt'
       - 'backend/**'
@@ -60,7 +61,7 @@ jobs:
           done
           echo 'SSH authentication failed.'; exit 1
       - name: Prepare release
-        run: tar -czf /tmp/audora-release.tgz index.html styles.css mobile-polish.css typography.css functionality.css app.js api.js booking-ui.js builder-team-selection.js i18n.js requirements.txt backend
+        run: tar -czf /tmp/audora-release.tgz index.html styles.css mobile-polish.css typography.css functionality.css app.js api.js booking-ui.js builder-team-selection.js logic-ui.js i18n.js requirements.txt backend
       - name: Upload and install full stack
         shell: bash
         run: |
@@ -123,13 +124,14 @@ jobs:
           UNIT
           systemctl daemon-reload; systemctl enable --now audora.service; systemctl restart audora.service
           rm -rf "$WEBROOT"/*
-          cp "$APP_ROOT/index.html" "$APP_ROOT/styles.css" "$APP_ROOT/mobile-polish.css" "$APP_ROOT/typography.css" "$APP_ROOT/functionality.css" "$APP_ROOT/app.js" "$APP_ROOT/api.js" "$APP_ROOT/booking-ui.js" "$APP_ROOT/builder-team-selection.js" "$APP_ROOT/i18n.js" "$WEBROOT/"
+          cp "$APP_ROOT/index.html" "$APP_ROOT/styles.css" "$APP_ROOT/mobile-polish.css" "$APP_ROOT/typography.css" "$APP_ROOT/functionality.css" "$APP_ROOT/app.js" "$APP_ROOT/api.js" "$APP_ROOT/booking-ui.js" "$APP_ROOT/builder-team-selection.js" "$APP_ROOT/logic-ui.js" "$APP_ROOT/i18n.js" "$WEBROOT/"
           printf '\n\n/* ===== responsive polish layer ===== */\n' >> "$WEBROOT/styles.css"; cat "$WEBROOT/mobile-polish.css" >> "$WEBROOT/styles.css"
           printf '\n\n/* ===== global typography layer ===== */\n' >> "$WEBROOT/styles.css"; cat "$WEBROOT/typography.css" >> "$WEBROOT/styles.css"
           printf '\n\n/* ===== functional UI layer ===== */\n' >> "$WEBROOT/styles.css"; cat "$WEBROOT/functionality.css" >> "$WEBROOT/styles.css"
-          if ! grep -q 'src="/api.js"' "$WEBROOT/index.html"; then sed -i 's#</body>#  <script src="/api.js"></script>\n  <script src="/booking-ui.js"></script>\n  <script src="/builder-team-selection.js"></script>\n</body>#' "$WEBROOT/index.html"; else
+          if ! grep -q 'src="/api.js"' "$WEBROOT/index.html"; then sed -i 's#</body>#  <script src="/api.js"></script>\n  <script src="/booking-ui.js"></script>\n  <script src="/builder-team-selection.js"></script>\n  <script src="/logic-ui.js"></script>\n</body>#' "$WEBROOT/index.html"; else
             if ! grep -q 'src="/booking-ui.js"' "$WEBROOT/index.html"; then sed -i 's#</body>#  <script src="/booking-ui.js"></script>\n</body>#' "$WEBROOT/index.html"; fi
             if ! grep -q 'src="/builder-team-selection.js"' "$WEBROOT/index.html"; then sed -i 's#</body>#  <script src="/builder-team-selection.js"></script>\n</body>#' "$WEBROOT/index.html"; fi
+            if ! grep -q 'src="/logic-ui.js"' "$WEBROOT/index.html"; then sed -i 's#</body>#  <script src="/logic-ui.js"></script>\n</body>#' "$WEBROOT/index.html"; fi
           fi
           chown -R www-data:www-data "$WEBROOT"
           cat > /etc/nginx/sites-available/audora.smarbiz.sbs <<NGINX
@@ -154,6 +156,7 @@ jobs:
           curl -kfsSL --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" -o /tmp/audora-home.html
           grep -qi Audora /tmp/audora-home.html
           grep -q 'builder-team-selection.js' "$WEBROOT/index.html"
+          grep -q 'logic-ui.js' "$WEBROOT/index.html"
           REMOTE
       - name: Verify production
         run: |
@@ -161,6 +164,7 @@ jobs:
           curl -fsSL --max-time 20 https://audora.smarbiz.sbs/ -o /tmp/audora-home.html
           grep -qi Audora /tmp/audora-home.html
           grep -q 'builder-team-selection.js' /tmp/audora-home.html
+          grep -q 'logic-ui.js' /tmp/audora-home.html
           curl -fsSL --max-time 20 https://audora.smarbiz.sbs/api/health/ -o /tmp/audora-health.json
           grep -q '"ok": true' /tmp/audora-health.json
           curl -fsSL --max-time 20 https://audora.smarbiz.sbs/api/listings/ -o /tmp/audora-listings.json
