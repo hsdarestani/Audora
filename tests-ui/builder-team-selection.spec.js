@@ -67,19 +67,21 @@ test.describe.serial('Audora selectable Smart Match team', () => {
     await expect(page.locator('script[src="/builder-team-selection.js"]')).toHaveCount(1);
 
     const studios = page.locator('[data-builder-studio]');
+    await expect(studios.nth(1)).toBeVisible({ timeout: 15000 });
     expect(await studios.count()).toBeGreaterThanOrEqual(2);
     const selectedStudioId = await studios.nth(1).getAttribute('data-builder-studio');
     await studios.nth(1).click();
     await expect(page.locator(`[data-builder-studio="${selectedStudioId}"]`)).toHaveClass(/selected/);
 
     const producers = page.locator('[data-builder-role-choice="producer"][data-builder-member]:not([data-builder-member=""])');
+    await expect(producers.nth(1)).toBeVisible({ timeout: 15000 });
     expect(await producers.count()).toBeGreaterThanOrEqual(2);
     const selectedProducerId = await producers.nth(1).getAttribute('data-builder-member');
     await producers.nth(1).click();
     await expect(page.locator(`[data-builder-role-choice="producer"][data-builder-member="${selectedProducerId}"]`)).toHaveClass(/selected/);
 
     const engineers = page.locator('[data-builder-role-choice="engineer"][data-builder-member]:not([data-builder-member=""])');
-    expect(await engineers.count()).toBeGreaterThanOrEqual(1);
+    await expect(engineers.first()).toBeVisible({ timeout: 15000 });
     const selectedEngineerId = await engineers.first().getAttribute('data-builder-member');
     await engineers.first().click();
     await expect(page.locator(`[data-builder-role-choice="engineer"][data-builder-member="${selectedEngineerId}"]`)).toHaveClass(/selected/);
@@ -114,7 +116,7 @@ test.describe.serial('Audora selectable Smart Match team', () => {
     await page.locator('#builderNext').click();
 
     const skipEngineer = page.locator('[data-builder-role-choice="engineer"][data-builder-member=""]');
-    await expect(skipEngineer).toBeVisible();
+    await expect(skipEngineer).toBeVisible({ timeout: 15000 });
     await skipEngineer.click();
     await expect(skipEngineer).toHaveClass(/selected/);
 
