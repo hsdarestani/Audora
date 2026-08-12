@@ -1,9 +1,9 @@
 from django.urls import path
-from . import api_v2
+from . import api_v2, frontend_compat
 
 urlpatterns = [
     path("health/", api_v2.health),
-    path("bootstrap/", api_v2.bootstrap),
+    path("bootstrap/", frontend_compat.bootstrap),
     path("auth/register/", api_v2.register_api),
     path("auth/login/", api_v2.login_api),
     path("auth/logout/", api_v2.logout_api),
