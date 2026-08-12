@@ -22,11 +22,25 @@
     };
   }
 
-  /* Mirror map-open state on the actual panel for accessibility/tests. */
+  /* Keep the sign-in/account control reachable on mobile as well. */
+  function exposeMobileAuth(){
+    const status=document.getElementById('backendStatus');
+    if(status && window.matchMedia('(max-width: 820px)').matches){
+      status.style.setProperty('display','inline-flex','important');
+      status.style.setProperty('max-width','104px','important');
+    }
+  }
+  exposeMobileAuth();
+  window.addEventListener('resize',exposeMobileAuth,{passive:true});
+
+  /* app.js toggles map state on a delegated document click, so mirror it after that handler runs. */
   document.getElementById('mapToggle')?.addEventListener('click',()=>{
-    const layout=document.getElementById('discoverLayout');
-    const panel=document.getElementById('mapPanel');
-    panel?.classList.toggle('open',!!layout?.classList.contains('map-open'));
+    setTimeout(()=>{
+      const layout=document.getElementById('discoverLayout');
+      const panel=document.getElementById('mapPanel');
+      panel?.classList.toggle('open',!!layout?.classList.contains('map-open'));
+      panel?.setAttribute('aria-hidden',layout?.classList.contains('map-open')?'false':'true');
+    },0);
   });
 
   /* A read notification should not leave an overlay blocking the app. */
