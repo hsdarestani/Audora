@@ -23,6 +23,8 @@ jobs:
           node --check api.js
           node --check booking-ui.js
           node --check i18n.js
+          node --check playwright.config.js
+          node --check tests-ui/audora-final.spec.js
       - name: Check backend Python syntax
         run: python -m compileall -q backend
       - name: Verify translation coverage
@@ -52,11 +54,13 @@ jobs:
           test -s api.js
           test -s booking-ui.js
           test -s i18n.js
+          test -s package.json
+          test -s playwright.config.js
+          test -s tests-ui/audora-final.spec.js
           test -s requirements.txt
           test -s backend/manage.py
           test -s backend/core/models.py
-          test -s backend/core/views.py
-          test -s backend/core/marketplace_views.py
-          test -s backend/core/calendar_views.py
-          test -s backend/core/booking_views.py
-          test -s backend/core/action_views.py
+          test -s backend/core/api_v2.py
+          test -s backend/core/frontend_compat.py
+          test -s backend/core/tests.py
+          test -s backend/core/urls.py
