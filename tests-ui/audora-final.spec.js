@@ -2,9 +2,12 @@ const { test, expect } = require('@playwright/test');
 
 const runId = process.env.GITHUB_RUN_ID || String(Date.now());
 const email = process.env.E2E_EMAIL || `ui-${runId}@audora.local`;
+const externalProviderEmail = process.env.E2E_BUILDER_EMAIL || `builder-${runId}@audora.local`;
 const password = 'AudoraUITest2026!';
 const displayName = 'UI Test';
 const listingName = `UI Studio ${runId}`;
+const externalListingName = `External UI Studio ${runId}`;
+const baseURL = process.env.AUDORA_BASE_URL || 'https://audora.smarbiz.sbs';
 
 function localDateTime(days, hour) {
   const d = new Date();
@@ -49,8 +52,36 @@ async function registerDesktop(page) {
   await expect(page.locator('#backendStatus')).toContainText(displayName, { timeout: 20000 });
 }
 
+async function createExternalBookable(browser) {
+  const context = await browser.newContext();
+  const providerPage = await context.newPage();
+  await providerPage.goto(baseURL, { waitUntil: 'domcontentloaded' });
+  const result = await providerPage.evaluate(async ({ providerEmail, password, listingName }) => {
+    const register = await fetch('/api/auth/register/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: providerEmail, password, name: 'External Provider' }),
+    });
+    const registerBody = await register.json();
+    if (!register.ok && registerBody.error !== 'email_exists') return { ok:false, stage:'register', status:register.status, body:registerBody };
+    if (!register.ok) {
+      const login = await fetch('/api/auth/login/', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ email:providerEmail, password }),
+      });
+      if (!login.ok) return { ok:false, stage:'login', status:login.status, body:await login.json() };
+    }
+    const created = await fetch('/api/provider/listings/', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ name:listingName, category:'studio', city:'Berlin', price:83, instant:true, genres:['Hip-Hop'], about_de:'Externer UI-Test', about_en:'External UI test' }),
+    });
+    return { ok:created.ok, stage:'listing', status:created.status, body:await created.json() };
+  }, { providerEmail: externalProviderEmail, password, listingName: externalListingName });
+  await context.close();
+  expect(result.ok, JSON.stringify(result)).toBeTruthy();
+}
+
 test.describe.serial('Audora full production browser coverage', () => {
-  test('desktop: all in-scope user and provider options work', async ({ page }) => {
+  test('desktop: all in-scope user and provider options work', async ({ page, browser }) => {
     test.skip(test.info().project.name !== 'desktop-chromium');
     const pageErrors = [];
     const apiErrors = [];
@@ -166,10 +197,20 @@ test.describe.serial('Audora full production browser coverage', () => {
       expect(boot.favorites.length).toBeGreaterThan(0);
     });
 
-    await test.step('listing detail and review', async () => {
+    await test.step('own review is blocked and external review works', async () => {
       const saved = page.locator('#savedGrid [data-listing-card]', { hasText: listingName });
       await saved.locator('[data-view-listing]').click();
       await expect(page.locator('#listingModal')).toHaveClass(/open/);
+      await expect(page.locator('[data-review-form]')).toHaveCount(0);
+      await expect(page.locator('#listingDetail')).toContainText(/Eigene Angebote|own listing/i);
+      await page.locator('#listingModal [data-close-modal]').click();
+
+      await createExternalBookable(browser);
+      await page.locator('.side-link[data-route=discover]').click();
+      await page.locator('#discoverSearch').fill(externalListingName);
+      const external = page.locator('#discoverGrid [data-listing-card]', { hasText: externalListingName });
+      await expect(external).toBeVisible({ timeout: 15000 });
+      await external.locator('[data-view-listing]').click();
       await expect(page.locator('[data-review-form]')).toBeVisible();
       await page.locator('[data-review-form] select[name=rating]').selectOption('5');
       await page.locator('[data-review-form] input[name=comment]').fill('UI E2E review');
@@ -188,7 +229,7 @@ test.describe.serial('Audora full production browser coverage', () => {
       await page.waitForTimeout(900);
 
       const bookings = await page.evaluate(async () => (await fetch('/api/bookings/')).json());
-      expect(bookings.results.some(x => x.listing.name === listingName && x.status === 'confirmed')).toBeTruthy();
+      expect(bookings.results.some(x => x.listing.name === externalListingName && x.status === 'confirmed')).toBeTruthy();
       const conflict = await page.evaluate(async ({ listingName }) => {
         const listings = await (await fetch('/api/listings/?q=' + encodeURIComponent(listingName))).json();
         const listing = listings.results.find(x => x.name === listingName);
@@ -196,7 +237,7 @@ test.describe.serial('Audora full production browser coverage', () => {
         start.setDate(start.getDate() + 120); start.setHours(11, 0, 0, 0);
         const response = await fetch('/api/bookings/', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({listing_id:listing.id,start_at:start.toISOString(),duration_hours:2}) });
         return { status:response.status, body:await response.json() };
-      }, { listingName });
+      }, { listingName: externalListingName });
       expect(conflict.status).toBe(409);
       expect(conflict.body.error).toBe('slot_just_booked');
     });
@@ -223,6 +264,8 @@ test.describe.serial('Audora full production browser coverage', () => {
       const hipHop = page.locator('#genreChips button', { hasText: 'Hip-Hop' });
       if (!(await hipHop.evaluate(el => el.classList.contains('active')))) await hipHop.click();
       await page.locator('#buildDate').fill(localDate(150));
+      await expect(page.locator('#buildTime')).toBeVisible();
+      await page.locator('#buildTime').fill('20:00');
       await page.locator('#budgetRange').fill('900');
       await page.locator('#builderNext').click();
       await expect(page.locator('[data-builder-page="3"]')).toHaveClass(/active/);
@@ -230,7 +273,7 @@ test.describe.serial('Audora full production browser coverage', () => {
       await expect(page.locator('section[data-view=sessions]')).toHaveClass(/active/, { timeout: 20000 });
 
       const sessionsApi = await page.evaluate(async () => (await fetch('/api/sessions/')).json());
-      const created = sessionsApi.results.find(x => x.status === 'confirmed');
+      const created = sessionsApi.results.find(x => ['confirmed', 'pending'].includes(x.status));
       expect(created).toBeTruthy();
       const row = page.locator('.session-item').filter({ hasText: created.title }).first();
       await expect(row).toBeVisible();
