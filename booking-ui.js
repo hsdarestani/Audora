@@ -22,6 +22,28 @@
     };
   }
 
+  /* A favorite only becomes visually persisted after the database confirms it. */
+  if(typeof toggleFavorite==='function' && typeof favorites!=='undefined'){
+    toggleFavorite=async function(id){
+      const shouldAdd=!favorites.has(id);
+      const buttons=[...document.querySelectorAll(`[data-favorite="${CSS.escape(id)}"]`)];
+      buttons.forEach(button=>{button.disabled=true;button.setAttribute('aria-busy','true')});
+      try{
+        const result=await window.AudoraAPI.favorite(id,shouldAdd);
+        if(result.active)favorites.add(id);else favorites.delete(id);
+        if(typeof renderHome==='function')renderHome();
+        if(typeof renderDiscover==='function')renderDiscover();
+        if(typeof renderSaved==='function')renderSaved();
+        if(typeof updateFavoriteCounts==='function')updateFavoriteCounts();
+      }catch(err){
+        console.error('[Audora API]',err);
+        if(typeof showToast==='function')showToast(langText('Speichern fehlgeschlagen. Bitte erneut versuchen.','Save failed. Please try again.'));
+      }finally{
+        document.querySelectorAll(`[data-favorite="${CSS.escape(id)}"]`).forEach(button=>{button.disabled=false;button.removeAttribute('aria-busy')});
+      }
+    };
+  }
+
   /* Keep the sign-in/account control reachable on mobile as well, including when api.js injects it after bootstrap. */
   function exposeMobileAuth(){
     const status=document.getElementById('backendStatus');
