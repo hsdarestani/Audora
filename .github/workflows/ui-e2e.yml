@@ -8,6 +8,7 @@ on:
       - 'app.js'
       - 'api.js'
       - 'booking-ui.js'
+      - 'builder-team-selection.js'
       - 'styles.css'
       - 'functionality.css'
       - 'mobile-polish.css'
@@ -26,6 +27,7 @@ jobs:
       AUDORA_BASE_URL: https://audora.smarbiz.sbs
       E2E_EMAIL: ui-${{ github.run_id }}@audora.local
       E2E_BUILDER_EMAIL: builder-${{ github.run_id }}@audora.local
+      E2E_TEAM_EMAIL: team-${{ github.run_id }}@audora.local
       HOST: ${{ secrets.HOST }}
       PASS: ${{ secrets.PASS }}
     steps:
@@ -43,13 +45,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 30); do
-            if curl -fsS --max-time 10 "$AUDORA_BASE_URL/api/health/" | grep -q '"ok": true' && \
-               curl -fsS --max-time 10 "$AUDORA_BASE_URL/" | grep -q 'booking-ui.js'; then
+          for i in $(seq 1 36); do
+            curl -fsS --max-time 10 "$AUDORA_BASE_URL/api/health/" -o /tmp/audora-health.json || true
+            curl -fsS --max-time 10 "$AUDORA_BASE_URL/" -o /tmp/audora-home.html || true
+            if grep -q '"ok": true' /tmp/audora-health.json 2>/dev/null && \
+               grep -q 'booking-ui.js' /tmp/audora-home.html 2>/dev/null && \
+               grep -q 'builder-team-selection.js' /tmp/audora-home.html 2>/dev/null; then
               echo 'Production is ready.'
               exit 0
             fi
-            echo "Waiting for production ($i/30)..."
+            echo "Waiting for production ($i/36)..."
             sleep 5
           done
           echo 'Production did not become ready.'
@@ -72,4 +77,4 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
           export SSHPASS="$PASS"
-          sshpass -e ssh -o StrictHostKeyChecking=no root@$HOST "set -a; source /etc/audora/audora.env; set +a; cd /opt/audora/app/backend; /opt/audora/venv/bin/python manage.py shell -c \"from django.contrib.auth import get_user_model; from core.models import Booking,Conversation,Listing,SessionFile; import os; U=get_user_model(); users=list(U.objects.filter(email__in=['$E2E_EMAIL','$E2E_BUILDER_EMAIL'])); print('ui cleanup users', len(users)); files=list(SessionFile.objects.filter(session__user__in=users)); [os.path.exists(f.file.path) and os.remove(f.file.path) for f in files]; conv=list(Conversation.objects.filter(participants__in=users).distinct()); [c.delete() for c in conv]; listings=list(Listing.objects.filter(provider__in=users)); Booking.objects.filter(listing__in=listings).delete() if listings else None; Booking.objects.filter(user__in=users).delete(); Listing.objects.filter(provider__in=users).delete(); [u.delete() for u in users]\""
+          sshpass -e ssh -o StrictHostKeyChecking=no root@$HOST "set -a; source /etc/audora/audora.env; set +a; cd /opt/audora/app/backend; /opt/audora/venv/bin/python manage.py shell -c \"from django.contrib.auth import get_user_model; from core.models import Booking,Conversation,Listing,SessionFile; import os; U=get_user_model(); users=list(U.objects.filter(email__in=['$E2E_EMAIL','$E2E_BUILDER_EMAIL','$E2E_TEAM_EMAIL'])); print('ui cleanup users', len(users)); files=list(SessionFile.objects.filter(session__user__in=users)); [os.path.exists(f.file.path) and os.remove(f.file.path) for f in files]; conv=list(Conversation.objects.filter(participants__in=users).distinct()); [c.delete() for c in conv]; listings=list(Listing.objects.filter(provider__in=users)); Booking.objects.filter(listing__in=listings).delete() if listings else None; Booking.objects.filter(user__in=users).delete(); Listing.objects.filter(provider__in=users).delete(); [u.delete() for u in users]\""
