@@ -119,7 +119,7 @@ def selected_session_api(request):
             user=user,
             title=str(data.get("title") or "Audora Session")[:180],
             goal=goal[:40],
-            city=city,
+            city=(locked_studio.city if locked_studio else city),
             start_at=start,
             duration_hours=duration,
             budget=budget,
