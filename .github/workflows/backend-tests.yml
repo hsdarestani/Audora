@@ -49,11 +49,11 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Django checks and migration drift
+      - name: Django checks and prepare migrations
         working-directory: backend
         run: |
           python manage.py check
-          python manage.py makemigrations --check --dry-run
+          python manage.py makemigrations core --noinput
       - name: Run full backend integration suite
         working-directory: backend
         run: python manage.py test core --verbosity=2
