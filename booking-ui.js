@@ -44,6 +44,19 @@
     };
   }
 
+  /* Messaging from a listing must not leave its modal intercepting the inbox. */
+  if(typeof messageListing==='function'){
+    const serverMessageListing=messageListing;
+    messageListing=async function(id){
+      if(typeof closeModals==='function')closeModals();
+      else{
+        const listingModal=document.getElementById('listingModal');
+        if(listingModal){listingModal.classList.remove('open');listingModal.setAttribute('aria-hidden','true')}
+      }
+      return serverMessageListing(id);
+    };
+  }
+
   /* Keep the sign-in/account control reachable on mobile as well, including when api.js injects it after bootstrap. */
   function exposeMobileAuth(){
     const status=document.getElementById('backendStatus');
