@@ -126,4 +126,4 @@ class HiddenLogicRegressionTests(TestCase):
         self.assertEqual(data["status"], "pending")
         session = SessionProject.objects.get(pk=data["id"])
         self.assertEqual(session.bookings.get().status, "pending")
-        self.assertTrue(Notification.objects.filter(user=self.provider, title_en="New session request").exists())
+        self.assertTrue(Notification.objects.filter(user=self.provider, title_en="New booking request").exists())
