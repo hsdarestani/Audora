@@ -97,7 +97,7 @@ class Review(models.Model):
 
 
 class SessionProject(models.Model):
-    STATUS_CHOICES = [("draft", "Draft"), ("confirmed", "Confirmed"), ("completed", "Completed"), ("cancelled", "Cancelled")]
+    STATUS_CHOICES = [("draft", "Draft"), ("pending", "Pending"), ("confirmed", "Confirmed"), ("completed", "Completed"), ("cancelled", "Cancelled")]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="session_projects")
     title = models.CharField(max_length=180)
