@@ -4,7 +4,7 @@ module.exports = defineConfig({
   testDir: './tests-ui',
   timeout: 120000,
   expect: { timeout: 12000 },
-  retries: 1,
+  retries: 0,
   workers: 1,
   reporter: [['line']],
   use: {
