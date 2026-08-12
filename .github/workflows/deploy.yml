@@ -144,14 +144,19 @@ jobs:
           nginx -t; systemctl reload nginx || systemctl restart nginx
           certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
           nginx -t; systemctl reload nginx
-          for i in 1 2 3 4 5 6; do if curl -fsS http://127.0.0.1:8008/api/health/ | grep -q '"ok": true'; then break; fi; sleep 2; done
-          curl -fsS http://127.0.0.1:8008/api/health/ | grep -q '"ok": true'
-          curl -kfsSL --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" | grep -qi Audora
+          for i in 1 2 3 4 5 6; do if curl -fsS http://127.0.0.1:8008/api/health/ -o /tmp/audora-health.json && grep -q '"ok": true' /tmp/audora-health.json; then break; fi; sleep 2; done
+          curl -fsS http://127.0.0.1:8008/api/health/ -o /tmp/audora-health.json
+          grep -q '"ok": true' /tmp/audora-health.json
+          curl -kfsSL --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" -o /tmp/audora-home.html
+          grep -qi Audora /tmp/audora-home.html
           REMOTE
       - name: Verify production
         run: |
           set -euo pipefail
-          curl -fsSL --max-time 20 https://audora.smarbiz.sbs/ | grep -qi Audora
-          curl -fsSL --max-time 20 https://audora.smarbiz.sbs/api/health/ | grep -q '"ok": true'
-          curl -fsSL --max-time 20 https://audora.smarbiz.sbs/api/listings/ | grep -q 'neon-room'
+          curl -fsSL --max-time 20 https://audora.smarbiz.sbs/ -o /tmp/audora-home.html
+          grep -qi Audora /tmp/audora-home.html
+          curl -fsSL --max-time 20 https://audora.smarbiz.sbs/api/health/ -o /tmp/audora-health.json
+          grep -q '"ok": true' /tmp/audora-health.json
+          curl -fsSL --max-time 20 https://audora.smarbiz.sbs/api/listings/ -o /tmp/audora-listings.json
+          grep -q 'neon-room' /tmp/audora-listings.json
           echo 'Audora full stack is live.'
