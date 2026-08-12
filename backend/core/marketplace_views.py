@@ -20,6 +20,25 @@ def provider_booking_json(booking):
     return data
 
 
+def sync_session_from_bookings(session):
+    rows = list(session.bookings.all())
+    if not rows:
+        return session.status
+    statuses = {row.status for row in rows}
+    if statuses == {"completed"}:
+        status = "completed"
+    elif statuses == {"cancelled"}:
+        status = "cancelled"
+    elif "pending" in statuses or "cancelled" in statuses:
+        status = "pending"
+    else:
+        status = "confirmed"
+    if session.status != status:
+        session.status = status
+        session.save(update_fields=["status", "updated_at"])
+    return status
+
+
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def bookings_api(request):
@@ -42,7 +61,9 @@ def bookings_api(request):
 
     duration = api_v2.clamp_decimal(data.get("duration_hours"), "0.5", "24", "1")
     with transaction.atomic():
-        listing = Listing.objects.select_for_update().select_related("provider").get(pk=listing.pk)
+        # Do not select_related(provider) on a SELECT FOR UPDATE query: provider is nullable,
+        # and PostgreSQL correctly rejects locking the nullable side of that outer join.
+        listing = Listing.objects.select_for_update().get(pk=listing.pk)
         if api_v2.booking_conflicts(listing, start, duration):
             return JsonResponse({"error": "slot_just_booked", "message": "This time is no longer available."}, status=409)
 
@@ -95,6 +116,80 @@ def bookings_api(request):
     payload["instant"] = listing.instant
     payload["requires_provider_confirmation"] = status == "pending"
     return JsonResponse(payload, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PATCH"])
+def booking_detail_api(request, booking_id):
+    """Customer can cancel; provider owns accept/decline/completion decisions."""
+    user = api_v2.ensure_user(request)
+    booking = Booking.objects.filter(pk=booking_id).select_related("listing", "session", "user", "listing__provider").first()
+    if not booking:
+        return JsonResponse({"error": "not_found"}, status=404)
+
+    is_customer = booking.user_id == user.id
+    is_provider = booking.listing.provider_id == user.id
+    if not (is_customer or is_provider or user.is_staff):
+        return JsonResponse({"error": "forbidden"}, status=403)
+
+    if request.method == "PATCH":
+        data = api_v2.json_body(request)
+        next_status = data.get("status")
+        if next_status not in {"pending", "confirmed", "cancelled", "completed"}:
+            return JsonResponse({"error": "invalid_status"}, status=400)
+
+        if is_customer and not (is_provider or user.is_staff):
+            if next_status == "completed":
+                return JsonResponse({"error": "customer_cannot_complete_booking"}, status=403)
+            if next_status != "cancelled":
+                return JsonResponse({"error": "invalid_status"}, status=400)
+            if booking.status in {"completed", "cancelled"}:
+                return JsonResponse({"error": "booking_is_terminal"}, status=409)
+        elif booking.status in {"completed", "cancelled"} and next_status != booking.status:
+            return JsonResponse({"error": "booking_is_terminal"}, status=409)
+
+        previous = booking.status
+        booking.status = next_status
+        booking.save(update_fields=["status"])
+        session_status = sync_session_from_bookings(booking.session) if booking.session_id else None
+
+        if is_provider or user.is_staff:
+            if next_status == "confirmed" and previous != "confirmed":
+                Notification.objects.create(
+                    user=booking.user,
+                    title_de="Buchungsanfrage bestätigt",
+                    title_en="Booking request confirmed",
+                    text_de=f"{booking.listing.name} hat deinen Termin bestätigt.",
+                    text_en=f"{booking.listing.name} confirmed your booking.",
+                )
+            elif next_status == "cancelled" and previous != "cancelled":
+                Notification.objects.create(
+                    user=booking.user,
+                    title_de="Buchungsanfrage abgelehnt",
+                    title_en="Booking request declined",
+                    text_de=f"{booking.listing.name} kann diesen Termin leider nicht annehmen.",
+                    text_en=f"{booking.listing.name} cannot accept this time.",
+                )
+            elif next_status == "completed" and previous != "completed":
+                Notification.objects.create(
+                    user=booking.user,
+                    title_de="Buchung abgeschlossen",
+                    title_en="Booking completed",
+                    text_de=f"{booking.listing.name} wurde als abgeschlossen markiert. Du kannst jetzt eine verifizierte Bewertung abgeben.",
+                    text_en=f"{booking.listing.name} was marked completed. You can now leave a verified review.",
+                )
+            if session_status == "confirmed" and booking.session_id:
+                Notification.objects.get_or_create(
+                    user=booking.user,
+                    title_en="Session confirmed",
+                    text_en=f"{booking.session.title} is now fully confirmed.",
+                    defaults={
+                        "title_de": "Session vollständig bestätigt",
+                        "text_de": f"{booking.session.title} ist jetzt vollständig bestätigt.",
+                    },
+                )
+
+    return JsonResponse(api_v2.booking_json(booking))
 
 
 @csrf_exempt
