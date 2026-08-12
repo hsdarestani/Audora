@@ -8,7 +8,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from . import api_v2
-from .models import Booking, Listing, Review, SessionProject
+from .models import Booking, Listing, Notification, ProviderProfile, Review, SessionProject
 
 
 def goal_rules(goal):
@@ -40,6 +40,25 @@ def _candidate_json(item, requested_city):
     data = api_v2.listing_json(item)
     data["out_of_city"] = requested_city.strip().lower() not in str(item.city or "").lower()
     return data
+
+
+def sync_session_from_bookings(session):
+    bookings = list(session.bookings.all())
+    if not bookings:
+        return session.status
+    statuses = {item.status for item in bookings}
+    if statuses == {"completed"}:
+        next_status = "completed"
+    elif statuses == {"cancelled"}:
+        next_status = "cancelled"
+    elif "pending" in statuses or "cancelled" in statuses:
+        next_status = "pending"
+    else:
+        next_status = "confirmed"
+    if session.status != next_status:
+        session.status = next_status
+        session.save(update_fields=["status", "updated_at"])
+    return next_status
 
 
 @csrf_exempt
@@ -78,6 +97,49 @@ def builder_candidates_api(request):
 
 
 @csrf_exempt
+@require_http_methods(["GET", "POST"])
+def bookings_api(request):
+    user = api_v2.ensure_user(request)
+    if request.method == "GET":
+        rows = Booking.objects.filter(user=user).select_related("listing", "session")
+        return JsonResponse({"results": [api_v2.booking_json(item) for item in rows]})
+
+    data = api_v2.json_body(request)
+    listing = Listing.objects.filter(slug=data.get("listing_id"), active=True).first()
+    raw_start = data.get("start_at")
+    start = api_v2.parse_start(raw_start)
+    if not listing or not start:
+        return JsonResponse({"error": "listing_and_start_required"}, status=400)
+    if start < timezone.now():
+        return JsonResponse({"error": "start_in_past"}, status=400)
+    duration = api_v2.clamp_decimal(data.get("duration_hours"), "0.5", "24", "1")
+
+    with transaction.atomic():
+        listing = Listing.objects.select_for_update().get(pk=listing.pk)
+        if api_v2.booking_conflicts(listing, start, duration):
+            return JsonResponse({"error": "slot_just_booked", "message": "This time is no longer available."}, status=409)
+        booking_status = "confirmed" if listing.instant else "pending"
+        total = listing.price * (duration if listing.category == "studio" else Decimal("1"))
+        booking = Booking.objects.create(
+            user=user,
+            listing=listing,
+            start_at=start,
+            duration_hours=duration,
+            total=total,
+            status=booking_status,
+            notes=str(data.get("notes") or "")[:10000],
+        )
+        Notification.objects.create(
+            user=user,
+            title_de="Buchung bestätigt" if booking_status == "confirmed" else "Buchungsanfrage gesendet",
+            title_en="Booking confirmed" if booking_status == "confirmed" else "Booking request sent",
+            text_de=f"{listing.name} wurde für deinen Termin gebucht." if booking_status == "confirmed" else f"Deine Anfrage an {listing.name} wartet auf Bestätigung.",
+            text_en=f"{listing.name} was booked for your session." if booking_status == "confirmed" else f"Your request to {listing.name} is waiting for confirmation.",
+        )
+    return JsonResponse(api_v2.booking_json(booking), status=201)
+
+
+@csrf_exempt
 @require_http_methods(["GET", "PATCH"])
 def booking_detail_api(request, booking_id):
     user = api_v2.ensure_user(request)
@@ -109,17 +171,8 @@ def booking_detail_api(request, booking_id):
 
         booking.status = next_status
         booking.save(update_fields=["status"])
-
         if booking.session_id:
-            session = booking.session
-            children = list(session.bookings.all())
-            statuses = {item.status for item in children}
-            if children and statuses == {"completed"}:
-                session.status = "completed"
-                session.save(update_fields=["status", "updated_at"])
-            elif children and statuses == {"cancelled"}:
-                session.status = "cancelled"
-                session.save(update_fields=["status", "updated_at"])
+            sync_session_from_bookings(booking.session)
 
     return JsonResponse(api_v2.booking_json(booking))
 
@@ -169,6 +222,57 @@ def session_detail_api(request, session_id):
             .get()
         )
     return JsonResponse(api_v2.session_json(session, full=True))
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PATCH"])
+def provider_dashboard_api(request):
+    user = api_v2.ensure_user(request)
+    profile, _ = ProviderProfile.objects.get_or_create(
+        user=user,
+        defaults={"display_name": (user.get_full_name() or user.username)[:140]},
+    )
+    if request.method == "PATCH":
+        data = api_v2.json_body(request)
+        if "active" in data:
+            parsed = api_v2.bool_value(data["active"], None)
+            if parsed is None:
+                return JsonResponse({"error": "active_boolean_required"}, status=400)
+            profile.active = parsed
+        if "display_name" in data:
+            profile.display_name = str(data["display_name"])[:140]
+        if "bio" in data:
+            profile.bio = str(data["bio"])[:10000]
+        if "role" in data:
+            profile.role = str(data["role"])[:80]
+        profile.save()
+
+    listings = Listing.objects.filter(provider=user, active=True)
+    now = timezone.localtime(timezone.now())
+    monthly = Booking.objects.filter(
+        listing__provider=user,
+        created_at__year=now.year,
+        created_at__month=now.month,
+    )
+    active_monthly = monthly.exclude(status="cancelled")
+    revenue = sum((item.total for item in monthly.filter(status__in=["confirmed", "completed"])), Decimal("0"))
+    return JsonResponse({
+        "active": profile.active,
+        "profile": {
+            "display_name": profile.display_name,
+            "bio": profile.bio,
+            "verified": profile.verified,
+            "response_minutes": profile.response_minutes,
+        },
+        "metrics": {
+            "period": "month",
+            "revenue": float(revenue),
+            "bookings": active_monthly.count(),
+            "listings": listings.count(),
+            "profile_views": 0,
+        },
+        "listings": [api_v2.listing_json(item) for item in listings],
+    })
 
 
 @csrf_exempt
