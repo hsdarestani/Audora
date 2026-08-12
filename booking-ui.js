@@ -22,16 +22,28 @@
     };
   }
 
-  /* Keep the sign-in/account control reachable on mobile as well. */
+  /* Keep the sign-in/account control reachable on mobile as well, including when api.js injects it after bootstrap. */
   function exposeMobileAuth(){
     const status=document.getElementById('backendStatus');
     if(status && window.matchMedia('(max-width: 820px)').matches){
       status.style.setProperty('display','inline-flex','important');
       status.style.setProperty('max-width','104px','important');
+      status.style.setProperty('visibility','visible','important');
+      status.removeAttribute('hidden');
+      return true;
     }
+    return !!status;
   }
   exposeMobileAuth();
   window.addEventListener('resize',exposeMobileAuth,{passive:true});
+  document.addEventListener('DOMContentLoaded',()=>{
+    let tries=0;
+    const timer=setInterval(()=>{
+      tries+=1;
+      const ready=exposeMobileAuth();
+      if((ready && tries>=4)||tries>=24)clearInterval(timer);
+    },250);
+  });
 
   /* app.js toggles map state on a delegated document click, so mirror it after that handler runs. */
   document.getElementById('mapToggle')?.addEventListener('click',()=>{
