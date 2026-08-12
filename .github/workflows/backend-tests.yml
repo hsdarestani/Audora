@@ -1,0 +1,59 @@
+name: Audora backend tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'requirements.txt'
+      - '.github/workflows/backend-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'requirements.txt'
+      - '.github/workflows/backend-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  django-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: audora_test_base
+          POSTGRES_USER: audora
+          POSTGRES_PASSWORD: audora
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U audora -d audora_test_base"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      AUDORA_SECRET_KEY: test-secret-key
+      AUDORA_DEBUG: '0'
+      AUDORA_ALLOWED_HOSTS: testserver,localhost,127.0.0.1
+      AUDORA_DB_NAME: audora_test_base
+      AUDORA_DB_USER: audora
+      AUDORA_DB_PASSWORD: audora
+      AUDORA_DB_HOST: 127.0.0.1
+      AUDORA_DB_PORT: '5432'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Django checks and migration drift
+        working-directory: backend
+        run: |
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+      - name: Run full backend integration suite
+        working-directory: backend
+        run: python manage.py test core --verbosity=2
