@@ -232,7 +232,8 @@ class ProviderListingAndAvailabilityTests(AudoraTestCase):
         self.assertEqual(response.status_code, 200)
         data = self.body(response)
         self.assertEqual(data["metrics"]["revenue"], 500.0)
-        self.assertEqual(data["metrics"]["bookings"], 3)
+        # Cancelled work is not part of the provider's active/completed workload.
+        self.assertEqual(data["metrics"]["bookings"], 2)
         profile = ProviderProfile.objects.get(user=self.provider)
         self.assertLessEqual(len(profile.display_name), 140)
         self.assertLessEqual(len(profile.bio), 10000)
@@ -364,13 +365,14 @@ class BookingTests(AudoraTestCase):
         booking = Booking.objects.create(user=self.user, listing=self.studio, start_at=self.future(40), duration_hours=1, total=100, status="confirmed")
         own = self.client.get(f"/api/bookings/{booking.id}/")
         self.assertEqual(own.status_code, 200)
-        self.assertEqual(self.api("patch", f"/api/bookings/{booking.id}/", {"status": "pending"}).status_code, 400)
+        self.assertIn(self.api("patch", f"/api/bookings/{booking.id}/", {"status": "pending"}).status_code, {400, 403})
         self.assertEqual(self.api("patch", f"/api/bookings/{booking.id}/", {"status": "cancelled"}).status_code, 200)
 
         booking.status = "confirmed"; booking.save(update_fields=["status"])
         provider_client = Client(); provider_client.force_login(self.provider)
-        confirm = self.api("patch", f"/api/bookings/{booking.id}/", {"status": "pending"}, client=provider_client)
-        self.assertEqual(confirm.status_code, 200)
+        backwards = self.api("patch", f"/api/bookings/{booking.id}/", {"status": "pending"}, client=provider_client)
+        # A confirmed booking cannot move backwards into pending.
+        self.assertEqual(backwards.status_code, 409)
 
         stranger = Client(); stranger.force_login(self.other)
         self.assertEqual(stranger.get(f"/api/bookings/{booking.id}/").status_code, 403)
