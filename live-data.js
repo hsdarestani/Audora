@@ -17,6 +17,7 @@
           if (typeof renderDiscover === 'function') renderDiscover();
           if (typeof renderHome === 'function') renderHome();
           if (typeof renderSaved === 'function') renderSaved();
+          if (typeof updateFavoriteCounts === 'function') updateFavoriteCounts();
           lastRefresh = Date.now();
         }
       } catch (error) {
@@ -29,6 +30,43 @@
   }
 
   window.AudoraRefreshMarketplace = refreshMarketplace;
+
+  /* Provider mutations must update the customer marketplace immediately after the server confirms them. */
+  if (window.AudoraAPI?.deleteProviderListing) {
+    const baseDeleteProviderListing = window.AudoraAPI.deleteProviderListing.bind(window.AudoraAPI);
+    window.AudoraAPI.deleteProviderListing = async function syncedDeleteProviderListing(id) {
+      const result = await baseDeleteProviderListing(id);
+      if (typeof listings !== 'undefined') {
+        const index = listings.findIndex(item => item.id === id);
+        if (index >= 0) listings.splice(index, 1);
+      }
+      if (typeof favorites !== 'undefined') favorites.delete(id);
+      if (typeof renderDiscover === 'function') renderDiscover();
+      if (typeof renderHome === 'function') renderHome();
+      if (typeof renderSaved === 'function') renderSaved();
+      if (typeof updateFavoriteCounts === 'function') updateFavoriteCounts();
+      await refreshMarketplace(true);
+      return result;
+    };
+  }
+
+  if (window.AudoraAPI?.createProviderListing) {
+    const baseCreateProviderListing = window.AudoraAPI.createProviderListing.bind(window.AudoraAPI);
+    window.AudoraAPI.createProviderListing = async function syncedCreateProviderListing(payload) {
+      const result = await baseCreateProviderListing(payload);
+      await refreshMarketplace(true);
+      return result;
+    };
+  }
+
+  if (window.AudoraAPI?.updateProviderListing) {
+    const baseUpdateProviderListing = window.AudoraAPI.updateProviderListing.bind(window.AudoraAPI);
+    window.AudoraAPI.updateProviderListing = async function syncedUpdateProviderListing(id, payload) {
+      const result = await baseUpdateProviderListing(id, payload);
+      await refreshMarketplace(true);
+      return result;
+    };
+  }
 
   document.addEventListener('click', event => {
     if (event.target.closest('[data-route="discover"]')) {
