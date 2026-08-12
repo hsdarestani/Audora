@@ -1,5 +1,5 @@
 from django.urls import path
-from . import api_v2, frontend_compat, provider_views
+from . import api_v2, builder_api, frontend_compat, provider_views
 
 urlpatterns = [
     path("health/", api_v2.health),
@@ -15,6 +15,7 @@ urlpatterns = [
     path("favorites/<slug:slug>/", api_v2.favorite_api),
     path("match/", api_v2.smart_match_api),
     path("sessions/", api_v2.sessions_api),
+    path("sessions/selected/", builder_api.selected_session_api),
     path("sessions/<uuid:session_id>/", api_v2.session_detail_api),
     path("sessions/<uuid:session_id>/cancel/", api_v2.cancel_session_api),
     path("sessions/<uuid:session_id>/files/", api_v2.session_file_api),
