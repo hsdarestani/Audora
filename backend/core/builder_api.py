@@ -32,12 +32,15 @@ def selected_session_api(request):
     genres = data.get("genres") if isinstance(data.get("genres"), list) else []
     budget = max(Decimal("0"), api_v2.decimal_value(data.get("budget"), "1000"))
     duration = api_v2.clamp_decimal(data.get("duration_hours"), "0.5", "24", "3")
+    requested_status = data.get("status") if data.get("status") in {"draft", "confirmed"} else "confirmed"
     raw_start = data.get("start_at")
     start = api_v2.parse_start(raw_start)
     if raw_start and not start:
         return JsonResponse({"error": "valid_start_required"}, status=400)
     if start and start < timezone.now():
         return JsonResponse({"error": "start_in_past"}, status=400)
+    if requested_status != "draft" and not start:
+        return JsonResponse({"error": "start_required_for_confirmation"}, status=400)
 
     studio_slug = str(data.get("studio_id") or "").strip()
     studio = None
@@ -94,7 +97,6 @@ def selected_session_api(request):
         return JsonResponse({"error": "empty_session_selection"}, status=400)
 
     total = (studio.price * duration if studio else Decimal("0")) + sum((item.price for item in team), Decimal("0"))
-    status = data.get("status") if data.get("status") in {"draft", "confirmed"} else "confirmed"
 
     with transaction.atomic():
         chosen = ([studio] if studio else []) + team
@@ -115,6 +117,11 @@ def selected_session_api(request):
                 if api_v2.booking_conflicts(item, start, duration):
                     return JsonResponse({"error": "slot_just_booked", "listing": item.slug}, status=409)
 
+        if requested_status == "draft":
+            session_status = "draft"
+        else:
+            session_status = "confirmed" if all(item.instant for item in selected) else "pending"
+
         session = SessionProject.objects.create(
             user=user,
             title=str(data.get("title") or "Audora Session")[:180],
@@ -124,7 +131,7 @@ def selected_session_api(request):
             duration_hours=duration,
             budget=budget,
             total=total,
-            status=status,
+            status=session_status,
             studio=locked_studio,
             genres=genres,
             notes=str(data.get("notes") or "")[:10000],
@@ -136,7 +143,7 @@ def selected_session_api(request):
             SessionTask(session=session, title="Session-Dateien hochladen", assignee_name=user.first_name or user.username, due_label="Today", order=2),
             SessionTask(session=session, title="Setup vorbereiten", assignee_name=setup_owner, due_label="Session", order=3),
         ])
-        if status == "confirmed" and start:
+        if requested_status != "draft" and start:
             for item in selected:
                 Booking.objects.create(
                     user=user,
@@ -145,15 +152,19 @@ def selected_session_api(request):
                     start_at=start,
                     duration_hours=duration,
                     total=item.price * (duration if item.category == "studio" else Decimal("1")),
-                    status="confirmed",
+                    status="confirmed" if item.instant else "pending",
                 )
-        Notification.objects.create(
-            user=user,
-            title_de="Session bestätigt" if status == "confirmed" else "Entwurf gespeichert",
-            title_en="Session confirmed" if status == "confirmed" else "Draft saved",
-            text_de=f"{session.title} wurde gespeichert.",
-            text_en=f"{session.title} was saved.",
-        )
+
+        if session_status == "confirmed":
+            title_de, title_en = "Session bestätigt", "Session confirmed"
+            text_de, text_en = f"{session.title} wurde bestätigt.", f"{session.title} was confirmed."
+        elif session_status == "pending":
+            title_de, title_en = "Anfragen gesendet", "Requests sent"
+            text_de, text_en = f"{session.title} wartet auf Bestätigung einzelner Anbieter.", f"{session.title} is waiting for provider confirmations."
+        else:
+            title_de, title_en = "Entwurf gespeichert", "Draft saved"
+            text_de, text_en = f"{session.title} wurde als Entwurf gespeichert.", f"{session.title} was saved as a draft."
+        Notification.objects.create(user=user, title_de=title_de, title_en=title_en, text_de=text_de, text_en=text_en)
 
     session = SessionProject.objects.prefetch_related("team", "tasks", "files").select_related("studio").get(pk=session.pk)
     return JsonResponse(api_v2.session_json(session, full=True), status=201)
