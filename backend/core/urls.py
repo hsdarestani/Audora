@@ -1,5 +1,5 @@
 from django.urls import path
-from . import api_v2, builder_api, frontend_compat, provider_views
+from . import api_v2, builder_api, frontend_compat, provider_views, logic_views
 
 urlpatterns = [
     path("health/", api_v2.health),
@@ -10,18 +10,19 @@ urlpatterns = [
     path("listings/", api_v2.listings_api),
     path("listings/<slug:slug>/", api_v2.listing_detail_api),
     path("listings/<slug:slug>/availability/", api_v2.availability_api),
-    path("listings/<slug:slug>/reviews/", api_v2.reviews_api),
+    path("listings/<slug:slug>/reviews/", logic_views.reviews_api),
     path("availability/<int:slot_id>/", api_v2.availability_delete_api),
     path("favorites/<slug:slug>/", api_v2.favorite_api),
     path("match/", api_v2.smart_match_api),
+    path("builder/candidates/", logic_views.builder_candidates_api),
     path("sessions/", api_v2.sessions_api),
     path("sessions/selected/", builder_api.selected_session_api),
-    path("sessions/<uuid:session_id>/", api_v2.session_detail_api),
+    path("sessions/<uuid:session_id>/", logic_views.session_detail_api),
     path("sessions/<uuid:session_id>/cancel/", api_v2.cancel_session_api),
     path("sessions/<uuid:session_id>/files/", api_v2.session_file_api),
     path("tasks/<int:task_id>/", api_v2.task_api),
     path("bookings/", api_v2.bookings_api),
-    path("bookings/<uuid:booking_id>/", api_v2.booking_detail_api),
+    path("bookings/<uuid:booking_id>/", logic_views.booking_detail_api),
     path("conversations/", api_v2.conversations_api),
     path("conversations/listing/<slug:slug>/", api_v2.conversation_for_listing_api),
     path("conversations/<uuid:conversation_id>/", api_v2.conversation_api),
