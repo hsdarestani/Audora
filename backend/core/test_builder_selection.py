@@ -27,10 +27,13 @@ class BuilderStudioSelectionTests(AudoraTestCase):
         session = SessionProject.objects.get(pk=body["id"])
         self.assertEqual(session.studio_id, self.cheap_studio.id)
         self.assertEqual(set(session.team.values_list("category", flat=True)), {"producer", "engineer"})
-        # These fixtures are not instant-bookable. The user's exact selection is
-        # persisted, but providers must approve the three requests first.
+
+        # Provider-less seed inventory is platform-managed and cannot wait for an
+        # approval nobody can give. Only the real provider-managed Producer request
+        # is pending, so the combined Session correctly remains pending overall.
         self.assertEqual(session.status, "pending")
-        self.assertEqual(Booking.objects.filter(session=session, status="pending").count(), 3)
+        self.assertEqual(Booking.objects.filter(session=session, status="pending").count(), 1)
+        self.assertEqual(Booking.objects.filter(session=session, status="confirmed").count(), 2)
 
     def test_builder_rejects_non_studio_as_selected_room(self):
         response = self.api("post", "/api/sessions/selected/", {
