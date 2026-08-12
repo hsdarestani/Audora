@@ -10,14 +10,62 @@ from . import api_v2, logic_views
 from .models import Booking, Listing, Notification, SessionProject, SessionTask
 
 
-def _auto_candidate(category, city, start, duration, genres):
-    local_qs = Listing.objects.filter(active=True, city__icontains=city)
-    candidates = api_v2.available_candidates(local_qs, category, start, duration, genres)
-    if candidates:
-        return candidates[0]
-    global_qs = Listing.objects.filter(active=True)
-    candidates = api_v2.available_candidates(global_qs, category, start, duration, genres)
-    return candidates[0] if candidates else None
+def _available_pool(category, city, start, duration, genres, user=None, limit=3):
+    base = Listing.objects.filter(active=True, category=category)
+    if user and user.is_authenticated:
+        base = base.exclude(provider=user)
+    local = api_v2.available_candidates(base.filter(city__icontains=city), category, start, duration, genres)
+    rows = list(local[:limit])
+    if len(rows) < limit:
+        used = [item.pk for item in rows]
+        global_rows = api_v2.available_candidates(base.exclude(pk__in=used), category, start, duration, genres)
+        rows.extend(global_rows[: max(0, limit - len(rows))])
+    return rows[:limit]
+
+
+def _auto_candidate(category, city, start, duration, genres, user=None):
+    rows = _available_pool(category, city, start, duration, genres, user=user, limit=1)
+    return rows[0] if rows else None
+
+
+def _candidate_json(item, requested_city):
+    data = api_v2.listing_json(item)
+    data["out_of_city"] = requested_city.strip().lower() not in str(item.city or "").lower()
+    return data
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def builder_candidates_api(request):
+    """Return only choices that can actually be selected for the requested time."""
+    user = api_v2.ensure_user(request)
+    data = api_v2.json_body(request)
+    goal = str(data.get("goal") or "record")
+    city = str(data.get("city") or "Berlin").strip()[:100]
+    genres = data.get("genres") if isinstance(data.get("genres"), list) else []
+    duration = api_v2.clamp_decimal(data.get("duration_hours"), "0.5", "24", "3")
+    raw_start = data.get("start_at")
+    start = api_v2.parse_start(raw_start)
+    if raw_start and not start:
+        return JsonResponse({"error": "valid_start_required"}, status=400)
+    if start and start < timezone.now():
+        return JsonResponse({"error": "start_in_past"}, status=400)
+
+    rules = logic_views.goal_rules(goal)
+    studios = _available_pool("studio", city, start, duration, genres, user=user, limit=3)
+    roles = {
+        role: [_candidate_json(item, city) for item in _available_pool(role, city, start, duration, genres, user=user, limit=3)]
+        for role in rules["roles"]
+    }
+    return JsonResponse({
+        "goal": goal,
+        "city": city,
+        "start_at": start.isoformat() if start else None,
+        "duration_hours": float(duration),
+        "rules": rules,
+        "studios": [_candidate_json(item, city) for item in studios],
+        "roles": roles,
+    })
 
 
 @csrf_exempt
@@ -48,6 +96,8 @@ def selected_session_api(request):
         studio = Listing.objects.filter(slug=studio_slug, active=True, category="studio").first()
         if not studio:
             return JsonResponse({"error": "selected_studio_not_found"}, status=404)
+        if studio.provider_id == user.id:
+            return JsonResponse({"error": "cannot_book_own_listing"}, status=403)
         if start and api_v2.booking_conflicts(studio, start, duration):
             return JsonResponse({"error": "slot_just_booked", "listing": studio.slug}, status=409)
     elif rules["studio_required"]:
@@ -71,6 +121,8 @@ def selected_session_api(request):
         seen_categories = set()
         for slug in requested:
             item = by_slug[slug]
+            if item.provider_id == user.id:
+                return JsonResponse({"error": "cannot_book_own_listing", "listing": item.slug}, status=403)
             if item.category not in wanted:
                 return JsonResponse({"error": "invalid_team_category", "listing": item.slug}, status=400)
             if item.category in seen_categories:
@@ -85,7 +137,7 @@ def selected_session_api(request):
     else:
         seen_categories = set()
         for category in wanted:
-            candidate = _auto_candidate(category, city, start, duration, genres)
+            candidate = _auto_candidate(category, city, start, duration, genres, user=user)
             if candidate:
                 team.append(candidate)
                 seen_categories.add(category)
@@ -117,10 +169,15 @@ def selected_session_api(request):
                 if api_v2.booking_conflicts(item, start, duration):
                     return JsonResponse({"error": "slot_just_booked", "listing": item.slug}, status=409)
 
+        def booking_status(item):
+            # Provider-less records are platform-managed legacy/demo inventory;
+            # they cannot wait for an approval that nobody can give.
+            return "confirmed" if item.instant or not item.provider_id else "pending"
+
         if requested_status == "draft":
             session_status = "draft"
         else:
-            session_status = "confirmed" if all(item.instant for item in selected) else "pending"
+            session_status = "confirmed" if all(booking_status(item) == "confirmed" for item in selected) else "pending"
 
         session = SessionProject.objects.create(
             user=user,
@@ -145,6 +202,7 @@ def selected_session_api(request):
         ])
         if requested_status != "draft" and start:
             for item in selected:
+                status = booking_status(item)
                 Booking.objects.create(
                     user=user,
                     listing=item,
@@ -152,8 +210,16 @@ def selected_session_api(request):
                     start_at=start,
                     duration_hours=duration,
                     total=item.price * (duration if item.category == "studio" else Decimal("1")),
-                    status="confirmed" if item.instant else "pending",
+                    status=status,
                 )
+                if item.provider_id:
+                    Notification.objects.create(
+                        user=item.provider,
+                        title_de="Neue Sofortbuchung" if status == "confirmed" else "Neue Buchungsanfrage",
+                        title_en="New instant booking" if status == "confirmed" else "New booking request",
+                        text_de=f"{item.name} wurde direkt gebucht." if status == "confirmed" else f"Für {item.name} liegt eine neue Anfrage vor.",
+                        text_en=f"{item.name} received a new instant booking." if status == "confirmed" else f"{item.name} has a new booking request.",
+                    )
 
         if session_status == "confirmed":
             title_de, title_en = "Session bestätigt", "Session confirmed"
