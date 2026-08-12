@@ -282,10 +282,10 @@ test.describe.serial('Audora full production browser coverage', () => {
       await page.locator('.profile-mini').click();
       await page.locator('#editProfile').click();
       await expect(page.locator('#settingsModal')).toHaveClass(/open/);
-      await page.locator('#settingsModal [data-close-modal]').click();
+      await page.locator('#settingsModal .modal-close').click();
       await page.locator('[data-settings=security]').click();
       await expect(page.locator('#settingsModal')).toHaveClass(/open/);
-      await page.locator('#settingsModal [data-close-modal]').click();
+      await page.locator('#settingsModal .modal-close').click();
 
       await page.locator('.brand-button[data-route=home]').first().click();
       await page.locator('#aiFab').click();
