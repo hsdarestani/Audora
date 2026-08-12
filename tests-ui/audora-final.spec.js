@@ -239,8 +239,18 @@ test.describe.serial('Audora full production browser coverage', () => {
 
       const pendingTask = page.locator('[data-server-task]:not(.done)').first();
       await expect(pendingTask).toBeVisible();
+      const taskId = await pendingTask.getAttribute('data-server-task');
+      expect(taskId).toBeTruthy();
       await pendingTask.click();
-      await expect(pendingTask).toHaveClass(/done/);
+      const sameTask = page.locator(`[data-server-task="${taskId}"]`);
+      await expect(sameTask).toHaveClass(/done/);
+      const taskState = await page.evaluate(async taskId => {
+        const sessionId = document.getElementById('sessionRoom').dataset.session;
+        const response = await fetch(`/api/sessions/${sessionId}/`);
+        const session = await response.json();
+        return session.tasks.find(task => String(task.id) === String(taskId));
+      }, taskId);
+      expect(taskState?.done).toBeTruthy();
 
       await page.locator('#roomTabs [data-room-tab=files]').click();
       await page.locator('[data-session-upload]').setInputFiles({ name:'ui-reference.txt', mimeType:'text/plain', buffer:Buffer.from('Audora UI test') });
