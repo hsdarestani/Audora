@@ -97,8 +97,10 @@ def booking_detail_api(request, booking_id):
             return JsonResponse({"error": "invalid_status"}, status=400)
 
         if is_customer and not (is_provider or user.is_staff):
+            if next_status == "completed":
+                return JsonResponse({"error": "customer_cannot_complete_booking"}, status=403)
             if next_status != "cancelled":
-                return JsonResponse({"error": "customer_can_only_cancel"}, status=403)
+                return JsonResponse({"error": "invalid_status"}, status=400)
             if booking.status in {"completed", "cancelled"}:
                 return JsonResponse({"error": "booking_is_terminal"}, status=409)
 
