@@ -44,7 +44,7 @@ jobs:
         run: |
           npm install
           npx playwright install --with-deps chromium
-      - name: Wait for production deployment
+      - name: Wait for exact audited production deployment
         shell: bash
         run: |
           set -euo pipefail
@@ -58,14 +58,16 @@ jobs:
                grep -q 'builder-time.js' /tmp/audora-home.html 2>/dev/null && \
                grep -q 'logic-ui.js' /tmp/audora-home.html 2>/dev/null && \
                grep -q 'live-data.js' /tmp/audora-home.html 2>/dev/null && \
-               grep -q 'message persistence' /tmp/audora-live-data.js 2>/dev/null; then
-              echo 'Production is ready.'
+               grep -q 'durableSendMessage' /tmp/audora-live-data.js 2>/dev/null && \
+               grep -q 'syncedDeleteProviderListing' /tmp/audora-live-data.js 2>/dev/null && \
+               grep -q 'cityAwareCreateSession' /tmp/audora-live-data.js 2>/dev/null; then
+              echo 'Exact audited production assets are ready.'
               exit 0
             fi
-            echo "Waiting for production ($i/48)..."
+            echo "Waiting for audited production ($i/48)..."
             sleep 5
           done
-          echo 'Production did not become ready.'
+          echo 'Audited production assets did not become ready.'
           exit 1
       - name: Run desktop and mobile UI E2E
         run: npm run test:ui
