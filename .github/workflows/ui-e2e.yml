@@ -1,0 +1,74 @@
+name: Audora UI E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'app.js'
+      - 'api.js'
+      - 'booking-ui.js'
+      - 'styles.css'
+      - 'functionality.css'
+      - 'mobile-polish.css'
+      - 'i18n.js'
+      - 'backend/**'
+      - 'tests-ui/**'
+      - 'package.json'
+      - 'playwright.config.js'
+      - '.github/workflows/ui-e2e.yml'
+  workflow_dispatch:
+
+jobs:
+  browser-e2e:
+    runs-on: ubuntu-latest
+    env:
+      AUDORA_BASE_URL: https://audora.smarbiz.sbs
+      E2E_EMAIL: ui-${{ github.run_id }}@audora.local
+      HOST: ${{ secrets.HOST }}
+      PASS: ${{ secrets.PASS }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package.json
+      - name: Install browser test dependencies
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+      - name: Wait for production deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 10 "$AUDORA_BASE_URL/api/health/" | grep -q '"ok": true' && \
+               curl -fsS --max-time 10 "$AUDORA_BASE_URL/" | grep -q 'booking-ui.js'; then
+              echo 'Production is ready.'
+              exit 0
+            fi
+            echo "Waiting for production ($i/30)..."
+            sleep 5
+          done
+          echo 'Production did not become ready.'
+          exit 1
+      - name: Run desktop and mobile UI E2E
+        run: npm run test:ui
+      - name: Upload browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audora-playwright-report-${{ github.run_id }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+      - name: Cleanup production E2E data
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          export SSHPASS="$PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no root@$HOST "set -a; source /etc/audora/audora.env; set +a; cd /opt/audora/app/backend; /opt/audora/venv/bin/python manage.py shell -c \"from django.contrib.auth import get_user_model; from core.models import Booking,Conversation,Listing,SessionFile; import os; U=get_user_model(); u=U.objects.filter(email='$E2E_EMAIL').first(); print('ui cleanup user', bool(u)); files=list(SessionFile.objects.filter(session__user=u)) if u else []; [os.path.exists(f.file.path) and os.remove(f.file.path) for f in files]; conv=list(Conversation.objects.filter(participants=u)) if u else []; [c.delete() for c in conv]; listings=list(Listing.objects.filter(provider=u)) if u else []; Booking.objects.filter(listing__in=listings).delete() if listings else None; Booking.objects.filter(user=u).delete() if u else None; Listing.objects.filter(provider=u).delete() if u else None; u.delete() if u else None\""
